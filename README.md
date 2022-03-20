@@ -57,7 +57,8 @@ Install requirements:
 
 3. Run the following command:
 
-    ``` python database/parsing_metadata.py --ib-path data/raw/INbreast\ Release\ 1.0/ ```
+
+    ``` python preprocess.py -arg1 bla ...```
 
 ### Option B
 
