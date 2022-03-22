@@ -2,7 +2,7 @@
 
 - ### Cortina Uribe Alejandro
 - ### Seia Joaquin Oscar
-- ### Zalevskyi Vladimir
+- ### Zalevskyi Vladyslav
 
 ## Environment set up
 
