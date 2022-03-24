@@ -70,7 +70,7 @@ def readxml(filename: Path, metadata_img: dict, im_shape: tuple):
         'case_id', 'img_id', 'side', 'view', 'Area', 'Center', 'Center_crop', 'Dev',
         'IndexInImage', 'Max', 'Mean', 'Min', 'NumberOfPoints', 'Point_mm', 'Point_px',
         'Point_px_crop', 'Total', 'Type', 'lesion_bbox', 'lesion_bbox_crop', 'stored',
-        'acr', 'birads', 'type_excel', 'finding_notes', 'lesion_annot', 'pectoral_muscle',
+        'acr', 'birads', 'finding_notes', 'lesion_annot', 'pectoral_muscle',
         'artifact', 'lesion_type'
     ])
     images_row = {}
@@ -227,6 +227,57 @@ def update_rois_coords(roi_df: pd.DataFrame, breast_bbox: List[tuple]):
     return out_df
 
 
+def format_roi_df(rois_df: pd.DataFrame):
+    """
+    Fixes lesion type values, and turn columns names into snake case
+    Args:
+        rois_df (pd.DataFrame)
+    Returns:
+        rois_df (pd.DataFrame)
+    """
+    rois_df.columns = [to_snake_case(name) for name in rois_df.columns]
+    replacements = {
+        'Calcification': 'calcification',
+        'Cluster': 'cluster',
+        'Mass': 'mass',
+        'Point 3': 'unknown',
+        'Espiculated Region': 'spiculated_region',
+        'Spiculated Region': 'spiculated_region',
+        'Distortion': 'distortion',
+        'Asymmetry': 'asymmetry',
+        'Unnamed': 'unknown',
+        'Point 1': 'unknown',
+        'Calcifications': 'calcification',
+        'Assymetry': 'asymmetry',
+        'Spiculated region': 'spiculated_region',
+    }
+    rois_df.fillna('unkown', inplace=True)
+    rois_df.replace({"lesion_type": replacements}, inplace=True)
+    return (rois_df)
+
+
+def add_image_and_case_label(img_df: pd.DataFrame):
+    """
+    Based on the specific lesions present in the image add a normal abnormal
+    label column for the study and for the image.
+    Args:
+        img_df (pd.DataFrame)
+    Returns:
+        (pd.DataFrame)
+    """
+    img_df['case_label'] = 'normal'
+    img_df['img_label'] = 'normal'
+
+    pathologic = (
+        (img_df.mass == True) | (img_df.micros == True) |
+        (img_df.distortion == True) | (img_df.asymmetry == True)
+    )
+    pathologic_studies = img_df.loc[pathologic, 'case_id'].unique()
+    img_df.loc[img_df.case_id.isin(pathologic_studies), 'case_label'] = 'abnormal'
+    img_df.loc[pathologic, 'img_label'] = 'abnormal'
+    return img_df
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -335,7 +386,8 @@ def main():
             cv2.imwrite(str(masks_folder/f'{img_id}_lesion_mask.png'), mask)
 
     # Save metadata in csv
-    rois_df.columns = [to_snake_case(name) for name in rois_df.columns]
+    rois_df = format_roi_df(rois_df)
+    images_df = add_image_and_case_label(images_df)
     images_df.to_csv(csvs_path/'images_metadata.csv')
     rois_df.to_csv(csvs_path/'rois_metadata.csv')
 
