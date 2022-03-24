@@ -153,7 +153,7 @@ def parse_metadata_from_excel(img_id: str, df_excel: pd.DataFrame):
         'acr': row.acr,
         'birads': str(row['bi-rads']),
         'mass': row.mass_ == 'X',
-        'micos': row.micros == 'X',
+        'micros': row.micros == 'X',
         'distortion': row.distortion == 'X',
         'asymmetry': row.asymmetry == 'X',
         'finding_notes': row['findings_notes_(in_portuguese)'],
@@ -278,14 +278,14 @@ def main():
         'case_id', 'img_id', 'side', 'view', 'Area', 'Center', 'Center_crop', 'Dev',
         'IndexInImage', 'Max', 'Mean', 'Min', 'NumberOfPoints', 'Point_mm', 'Point_px',
         'Point_px_crop', 'Total', 'Type', 'lesion_bbox', 'lesion_bbox_crop', 'stored',
-        'acr', 'birads', 'mass', 'micos', 'distortion', 'asymmetry', 'finding_notes',
+        'acr', 'birads', 'mass', 'micros', 'distortion', 'asymmetry', 'finding_notes',
         'lesion_annot', 'pectoral_muscle', 'artifact', 'lesion_type'
     ])
 
     images_df = pd.DataFrame(columns=[
         'img_id', 'n_rois', 'side', 'view', 'filename', 'acr', 'artifact', 'birads',
         'case_id', 'finding_notes', 'lesion_annot', 'pectoral_muscle', 'mass',
-        'micos', 'distortion', 'asymmetry', 'breast_bbox'
+        'micros', 'distortion', 'asymmetry', 'breast_bbox'
     ])
 
     # Read each dicom and parse the respective xml file
@@ -308,28 +308,31 @@ def main():
 
         # Parse xml file
         xml_filepath = xml_folder / f'{img_id}.xml'
-        if not xml_filepath.exists():
-            continue
-        images_row, roi_df, mask = readxml(xml_filepath, metadata_img, im_array.shape)
+        if xml_filepath.exists():
+            images_row, roi_df, mask = readxml(xml_filepath, metadata_img, im_array.shape)
+        else:
+            images_row = {'n_rois': 0, 'breast_bbox': None}
+            images_row.update(metadata_img)
 
-        # If indicated extract the breast bbox and update rois coords
         if args.crop_breast:
+            # If indicated extract the breast bbox and update rois coords
             bbox, _ = get_breast_bbox(im_array.copy())
             im_array = im_array[bbox[0][0]:bbox[1][0], bbox[0][1]:bbox[1][1]]
             mask = mask[bbox[0][0]:bbox[1][0], bbox[0][1]:bbox[1][1]]
-            roi_df = update_rois_coords(roi_df.copy(), bbox.copy())
+            roi_df = update_rois_coords(roi_df.copy(), bbox.copy()) \
+                if xml_filepath.exists() else roi_df
             images_row['breast_bbox'] = bbox
 
-        # Update dataframes
-        rois_df = rois_df.append(roi_df, ignore_index=True)
-        images_df = images_df.append(pd.Series(images_row), ignore_index=True)
-
-        # Write mask and png version of the image
-        cv2.imwrite(str(masks_folder/f'{img_id}_lesion_mask.png'), mask)
+        # Update dataframes and write mask and png version of the image
         png_name = png_folder/f'{img_id}.png'
-        cv2.imwrite(str(png_name), im_array)
-        images_row.update(metadata_img)
         images_row['filename'] = png_name
+
+        images_df = images_df.append(pd.Series(images_row), ignore_index=True)
+        cv2.imwrite(str(png_name), im_array)
+
+        if xml_filepath.exists():
+            rois_df = rois_df.append(roi_df, ignore_index=True)
+            cv2.imwrite(str(masks_folder/f'{img_id}_lesion_mask.png'), mask)
 
     # Save metadata in csv
     rois_df.columns = [to_snake_case(name) for name in rois_df.columns]
