@@ -1,6 +1,6 @@
 pydicom == 2.2.2
 numpy
-opencv-python == 4.5.5.64
+opencv-python == 4.5.4.60
 pandas
 scikit-learn
 matplotlib
