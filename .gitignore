@@ -3,7 +3,6 @@ data
 data/
 database/preparing_data.py
 database/Untitled.ipynb
-database/utils.py
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
