@@ -138,13 +138,6 @@ def parse_metadata_from_excel(img_id: str, df_excel: pd.DataFrame):
         (dict): Containing desired metadata.
     """
     row = df_excel.loc[df_excel.file_name == img_id, :].squeeze()
-    # Following a binary code in this order: (mass, micro, dist, asym)
-    type_excel = (
-        row.mass_ == 'X',
-        row.micros == 'X',
-        row.distortion == 'X',
-        row.asymmetry == 'X'
-    )
     la = row.lesion_annotation_status
     lesion_annot = 'no-normal' \
         if isinstance(la, str) and (la.lower() == 'no annotation (normal)') else 'yes'
@@ -153,14 +146,16 @@ def parse_metadata_from_excel(img_id: str, df_excel: pd.DataFrame):
         isinstance(pm, str) and (pm.lower() != 'without muscle') and (row.view == 'MLO')
     art = row.other_annotations
     artifact = isinstance(art, str) and art.lower() == 'artifact not annotated'
-    acr = int(row.acr) if isinstance(row.acr, float) else None
     return {
         'img_id': img_id,
         'side':  row.laterality,
         'view': row['view'],
-        'acr': acr,
+        'acr': row.acr,
         'birads': str(row['bi-rads']),
-        'type_excel': type_excel,
+        'mass': row.mass_ == 'X',
+        'micos': row.micros == 'X',
+        'distortion': row.distortion == 'X',
+        'asymmetry': row.asymmetry == 'X',
         'finding_notes': row['findings_notes_(in_portuguese)'],
         'lesion_annot': lesion_annot,
         'pectoral_muscle': pectoral_muscle,
@@ -283,14 +278,14 @@ def main():
         'case_id', 'img_id', 'side', 'view', 'Area', 'Center', 'Center_crop', 'Dev',
         'IndexInImage', 'Max', 'Mean', 'Min', 'NumberOfPoints', 'Point_mm', 'Point_px',
         'Point_px_crop', 'Total', 'Type', 'lesion_bbox', 'lesion_bbox_crop', 'stored',
-        'acr', 'birads', 'type_excel', 'finding_notes', 'lesion_annot', 'pectoral_muscle',
-        'artifact', 'lesion_type'
+        'acr', 'birads', 'mass', 'micos', 'distortion', 'asymmetry', 'finding_notes',
+        'lesion_annot', 'pectoral_muscle', 'artifact', 'lesion_type'
     ])
 
     images_df = pd.DataFrame(columns=[
         'img_id', 'n_rois', 'side', 'view', 'filename', 'acr', 'artifact', 'birads',
-        'case_id', 'finding_notes', 'lesion_annot', 'pectoral_muscle', 'type_excel',
-        'breas_bbox'
+        'case_id', 'finding_notes', 'lesion_annot', 'pectoral_muscle', 'mass',
+        'micos', 'distortion', 'asymmetry', 'breast_bbox'
     ])
 
     # Read each dicom and parse the respective xml file
