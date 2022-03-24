@@ -1,8 +1,6 @@
 # data
 data
 data/
-database/dataset.py
-database/masks.py
 database/preparing_data.py
 database/Untitled.ipynb
 database/utils.py
