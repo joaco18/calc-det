@@ -190,6 +190,8 @@ class INBreast_Dataset(Dataset):
 
     def flip_coordinates(self, idx):
         # TODO: Add docstring
+        # TODO: Fix bounding boxes, after flipping we are keeping upper 
+        # right and bottom left which is the opposite corners as before.
         img_id = self.csv['img_id'].iloc[idx]
         breast_bbox = utils.load_coords(
             self.img_csv.loc[self.img_csv.img_id == img_id, 'breast_bbox']
