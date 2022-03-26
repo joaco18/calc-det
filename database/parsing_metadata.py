@@ -251,7 +251,7 @@ def format_roi_df(rois_df: pd.DataFrame):
         'Assymetry': 'asymmetry',
         'Spiculated region': 'spiculated_region',
     }
-    rois_df.fillna('unkown', inplace=True)
+    rois_df.fillna('unknown', inplace=True)
     rois_df.replace({"lesion_type": replacements}, inplace=True)
     return (rois_df)
 
