@@ -46,7 +46,7 @@ def extract_bbox(points: List[np.ndarray]):
     width = bbox_coords[1][1] - bbox_coords[0][1]
     heigth = bbox_coords[1][0] - bbox_coords[0][0]
     center_coords = \
-        (bbox_coords[0][0] - int(heigth/2), bbox_coords[0][1] - int(width/2))
+        (bbox_coords[0][0] + int(heigth/2), bbox_coords[0][1] + int(width/2))
     return bbox_coords, center_coords
 
 
@@ -187,18 +187,14 @@ def get_breast_bbox(image: np.ndarray):
 
     # Get the areas of each connected component
     sizes = stats[:, -1]
-    # Keep the largest connected component
-    max_label = np.argmax(sizes[1:])
+    # Keep the largest connected component excluding bkgd
+    max_label = np.argmax(sizes[1:]) + 1
+    x, y, w, h = stats[max_label, 0:4]
+    breast_bbox = [(y, x), (y+h, x+w)]
 
     # Generate a binary mask for the breast
     mask = np.zeros(img.shape)
     mask[output == max_label] = 1
-
-    # Obtain the contour of the breast and generate bbox.
-    contours, _ = cv2.findContours(img, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
-    x, y, w, h = cv2.boundingRect(contours[0])
-    # print(x, y, w, h)
-    breast_bbox = [(y, x), (y+h, x+w)]
     return breast_bbox, mask
 
 
@@ -296,7 +292,8 @@ def main():
         '--rp', dest='reprocess', action='store_true',
         help='Whether to reprocess the case if the mask already exists or not')
     parser.add_argument(
-        '--v', dest='verbose', action='store_true', help='Wheter to print the warnings or not')
+        '--v', dest='verbose', action='store_true',
+        help='Wheter to print the warnings or not')
     parser.add_argument(
         '--cb', dest='crop_breast', action='store_true',
         help='Just save the breast region in the pngs.')
@@ -370,8 +367,8 @@ def main():
             bbox, _ = get_breast_bbox(im_array.copy())
             im_array = im_array[bbox[0][0]:bbox[1][0], bbox[0][1]:bbox[1][1]]
             mask = mask[bbox[0][0]:bbox[1][0], bbox[0][1]:bbox[1][1]]
-            roi_df = update_rois_coords(roi_df.copy(), bbox.copy()) \
-                if xml_filepath.exists() else roi_df
+            if xml_filepath.exists():
+                roi_df = update_rois_coords(roi_df.copy(), bbox.copy())
             images_row['breast_bbox'] = bbox
 
         # Update dataframes and write mask and png version of the image
