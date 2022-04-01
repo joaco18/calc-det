@@ -1,3 +1,7 @@
+from pathlib import Path
+thispath = Path(__file__).resolve()
+import sys; sys.path.insert(0, str(thispath.parent))
+
 import collections
 import cv2
 import logging
@@ -10,14 +14,14 @@ import numpy as np
 import pandas as pd
 
 from pathlib import Path
-# from preprocessing.generate_roi_patches
-from roi_extraction import slice_image, padd_image
+from roi_extraction import slice_image, padd_image, view_as_windows
 # from torchvision import transforms
 from typing import List, Tuple
+from tqdm import tqdm
 
 thispath = Path(__file__).resolve()
 datapath = thispath.parent.parent / "data" / "INbreast Release 1.0"
-LEISION_TYPES = ['asymmetry', 'calcification', 'cluster', 'distortion', 'mass', 'normal']
+LESION_TYPES = ['asymmetry', 'calcification', 'cluster', 'distortion', 'mass', 'normal']
 
 
 class Dataset():
@@ -155,7 +159,7 @@ class INBreast_Dataset(Dataset):
         self.rois_df = self.rois_df.loc[self.rois_df.stored == True]
         self.filter_by_partition()
         self.filter_by_lesion_size()
-        self.limit_to_selected_views(views)
+        self.limit_to_selected_views()
         self.filter_by_lesion_type()
         self.add_image_label_to_image_df()
 
@@ -166,11 +170,15 @@ class INBreast_Dataset(Dataset):
                 self.min_breast_frac = min_breast_fraction_roi
                 self.stride = stride
                 if extract_rois_method == 'all':
-                    self.rois_df = self.all_rois_extraction()
+                    self.all_rois_extraction()
                     self.rois_df.to_csv(str(dfpath/'complete_rois_metadata.csv'))
                 else:
-                    self.rois_df = self.centered_rois_extraction()
+                    self.centered_rois_extraction()
                     self.rois_df.to_csv(str(dfpath/'complete_rois_metadata.csv'))
+            else:
+                self.rois_df = pd.read_csv(
+                    str(dfpath/'complete_rois_metadata.csv'), index_col=0
+                )
 
         # Get our classes.
         self.df = self.img_df if level == 'image' else self.rois_df
@@ -192,8 +200,8 @@ class INBreast_Dataset(Dataset):
             self.views = ["*"]
 
         # Missing data is unknown
-        self.img_df.view.fillna("UNKNOWN", inplace=True)
-        self.rois_df.view.fillna("UNKNOWN", inplace=True)
+        self.img_df['view'].fillna("UNKNOWN", inplace=True)
+        self.rois_df['view'].fillna("UNKNOWN", inplace=True)
 
         # Select the view
         if "*" not in self.views:
@@ -203,7 +211,7 @@ class INBreast_Dataset(Dataset):
         self.rois_df.reset_index(inplace=True, drop=True)
         self.img_df.reset_index(inplace=True, drop=True)
 
-    def filter_data_by_partition(self):
+    def filter_by_partition(self):
         """
         This method is called to filter the images according to the predefined partitions
         in the INBreast Database
@@ -212,7 +220,7 @@ class INBreast_Dataset(Dataset):
         self.rois_df = self.rois_df.loc[self.rois_df.partition.isin(self.partitions), :]
         self.rois_df.reset_index(inplace=True, drop=True)
         # filter imgs df
-        self.img_df = self.img_df.partition.isin(self.partitions)
+        self.img_df = self.img_df.loc[self.img_df['partition'].isin(self.partitions)]
         self.img_df.reset_index(inplace=True, drop=True)
 
     def filter_by_lesion_size(self):
@@ -221,7 +229,7 @@ class INBreast_Dataset(Dataset):
         of the circle enclosing the lesion.
         """
         # filter rois df
-        self.rois_df = self.rois_df.loc[self.rois_df.radius > self.max_lesion_size_px, :]
+        self.rois_df = self.rois_df.loc[self.rois_df.radius <= self.max_lesion_size_px, :]
         self.rois_df.reset_index(inplace=True, drop=True)
 
     def filter_by_lesion_type(self):
@@ -267,9 +275,13 @@ class INBreast_Dataset(Dataset):
         passed to the constructor. It saves the rois and the masks and updates the rois csv.
         The processing is done in parallel to make it faster.
         """
-        indxs = np.arange(self.img_df.shape[0])
+        n_rows = self.img_df.shape[0]
+        res = []
+        # for i in tqdm(indxs, total=len(indxs)):
+        #     res.append(self.extract_rois_from_image(i))
         with mp.Pool(self.n_jobs) as pool:
-            res = pool.map(self.extract_rois_from_image(), list(indxs))
+            for result in tqdm(pool.imap(self.extract_rois_from_image, range(n_rows)), total=n_rows):
+                res.append(result)
         self.rois_df = pd.concat(res, ignore_index=True)
 
     def extract_rois_from_image(self, idx: int):
@@ -283,27 +295,27 @@ class INBreast_Dataset(Dataset):
         # Read images pngs
         filename = Path(self.img_df['filename'].iloc[idx]).name
         img_path = self.full_img_path / filename
-        image = cv2.imread(img_path, cv2.IMREAD_ANYDEPTH)
+        image = cv2.imread(str(img_path), cv2.IMREAD_ANYDEPTH)
         img_id = self.img_df['img_id'].iloc[idx]
-        mask_path = self.full_mask_path / f'{img_id}_mask.png'
-        mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
+        mask_path = self.full_mask_path / f'{img_id}_lesion_mask.png'
+        mask = cv2.imread(str(mask_path), cv2.IMREAD_GRAYSCALE)
 
-        if image.shape[0] % self.roi_size != 0 or image.shape[1] % self.roi_size != 0:
-            logging.warning(
-                'Loosing information. \n Image shapes should be divisible by the roi size.'
-                ' Consider padding'
-            )
+        side = self.img_df['side'].iloc[idx]
+        if side == 'R':
+            image = cv2.flip(image, 1)
+            mask = cv2.flip(mask, 1)
+            self.flip_coordinates(img_id)
 
         # Extract patches equally from image and the mask
         image = padd_image(image, self.roi_size)
         mask = padd_image(mask, self.roi_size)
         image_rois = slice_image(image, window_size=self.roi_size, stride=self.stride)
-        row_num, col_num, _, __ = image_rois.shape
         mask_rois = slice_image(mask, window_size=self.roi_size, stride=self.stride)
 
         # Filter rois already filtered from the rois_df
+        present_indx = self.rois_df.loc[self.rois_df.img_id == img_id, 'index_in_image'].tolist()
         indexes_to_filter = \
-            [index for index in np.unique(mask_rois) if index not in self.rois_df.index_in_image]
+            [index for index in np.unique(mask_rois) if index not in present_indx]
         for index in indexes_to_filter:
             mask_rois = np.where(mask_rois == index, 0, mask_rois)
 
@@ -328,7 +340,7 @@ class INBreast_Dataset(Dataset):
         rois_descr = rois_descr[rois_descr.columns.intersection(self.lesion_types)]
 
         # standartize df to habe always same number and types of columns
-        for lt in LEISION_TYPES:
+        for lt in LESION_TYPES:
             if lt not in rois_descr.columns:
                 rois_descr[lt] = 0
 
@@ -339,7 +351,7 @@ class INBreast_Dataset(Dataset):
 
         # Filter Rois with more background than breast or just bkgrd
         keep_idx = \
-            rois_descr.loc[rois_descr.breast_fraction >= self.min_breast_frac].index
+            rois_descr.loc[rois_descr.breast_fraction >= self.min_breast_frac].index.tolist()
         rois_descr = rois_descr.iloc[keep_idx]
         image_rois = image_rois[keep_idx, :, :]
         mask_rois = mask_rois[keep_idx, :, :]
@@ -350,27 +362,29 @@ class INBreast_Dataset(Dataset):
 
         # calculating patches coordinates
         bbox_coordinates = []
+        row_num, col_num, _, __ = view_as_windows(image, self.roi_size, self.stride).shape
         for col in range(row_num):
             row_idx = [((row * self.stride, col * self.stride),
                         (self.roi_size + row * self.stride,
                         self.roi_size + col * self.stride)) for row in range(col_num)]
             bbox_coordinates.extend(row_idx)
-        rois_descr['roi_bbox'] = bbox_coordinates
+        bbox_coordinates = np.array(bbox_coordinates)
+        rois_descr['roi_bbox'] = list(bbox_coordinates[keep_idx, :, :])
 
         # Save rois and masks
-        # TODO: if multiprocessing not working properly at list do multithreading here
         roi_filenames, roi_mask_filenames = [], []
         for roi_idx in range(image_rois.shape[0]):
             # You won't have empty images in this case due to the min_breast constrain
             roi_name = f'{img_id}_roi_{roi_idx}.png'
             roi_filenames.append(roi_name)
-            cv2.imwrite(str(self.rois_folder/roi_name), image_rois[roi_idx, :, :])
+            cv2.imwrite(str(self.rois_img_path/roi_name), image_rois[roi_idx, :, :])
 
             if mask_rois[roi_idx, :, :].any():  # Empty images cannot be stored
                 roi_mask_name = f'{img_id}_roi_{roi_idx}_mask.png'
-                roi_mask_filenames.append(roi_name)
-                cv2.imwrite(str(self.rois_masks_folder/roi_mask_name), mask_rois[roi_idx, :, :])
-            roi_mask_filenames.append('empty_mask')
+                roi_mask_filenames.append(roi_mask_name)
+                cv2.imwrite(str(self.rois_mask_path/roi_mask_name), mask_rois[roi_idx, :, :])
+            else:
+                roi_mask_filenames.append('empty_mask')
 
         # complete dataframe
         rois_descr['filename'] = roi_filenames
@@ -379,7 +393,11 @@ class INBreast_Dataset(Dataset):
             rois_descr[column] = self.img_df[column].iloc[idx]
 
         # Add the same label as expected in the constructor
-        rois_descr['label'] = np.where(rois_descr.normal == 1, 'normal', 'abnormal')
+        rois_descr['label'] = False
+        for les_type in LESION_TYPES:
+            rois_descr['label'] = \
+                rois_descr['label'] | np.where(rois_descr[les_type] != 0, True, False)
+        rois_descr['label'] = np.where(rois_descr['label'] == True, 'abnormal', 'normal')
 
         return rois_descr
 
@@ -388,9 +406,11 @@ class INBreast_Dataset(Dataset):
         Extracts rois of a fixed size centered in each lesion.
         The processing is done in parallel to make it faster.
         """
-        indxs = np.arange(self.img_df.shape[0])
+        n_rows = self.img_df.shape[0]
+        res = []
         with mp.Pool(self.n_jobs) as pool:
-            res = pool.map(self.extract_centered_rois_from_image(), list(indxs))
+            for result in tqdm(pool.imap(self.extract_centered_rois_from_image, range(n_rows)), total=n_rows):
+                res.append(result)
         self.rois_df = pd.concat(res, ignore_index=True)
 
     def extract_centered_rois_from_image(self, idx: int):
@@ -413,12 +433,13 @@ class INBreast_Dataset(Dataset):
         # Read images pngs
         filename = Path(self.img_df['filename'].iloc[idx]).name
         img_path = self.full_img_path / filename
-        image = cv2.imread(img_path, cv2.IMREAD_ANYDEPTH)
+        image = cv2.imread(str(img_path), cv2.IMREAD_ANYDEPTH)
         img_id = self.img_df['img_id'].iloc[idx]
-        mask_path = self.full_mask_path / f'{img_id}_mask.png'
-        mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
+        mask_path = self.full_mask_path / f'{img_id}_lesion_mask.png'
+        mask = cv2.imread(str(mask_path), cv2.IMREAD_GRAYSCALE)
 
         # TODO: ALEX FUNCTIONS
+        # Flip the image
         # Extract the roi based on the bbox for each lesion in rois_subset
         # check breast fraction
         # use self.roi_size
@@ -441,17 +462,17 @@ class INBreast_Dataset(Dataset):
         if self.level == 'image':
             filename = Path(self.df['filename'].iloc[idx]).name
             img_path = self.full_img_path / filename
-            img = cv2.imread(img_path, cv2.IMREAD_ANYDEPTH)
+            img = cv2.imread(str(img_path), cv2.IMREAD_ANYDEPTH)
         else:
-            img = cv2.imread(
-                self.df['filename'].iloc[idx], cv2.IMREAD_ANYDEPTH
-            )
+            img_path = self.rois_img_path / self.df['filename'].iloc[idx]
+            img = cv2.imread(str(img_path), cv2.IMREAD_ANYDEPTH)
 
         # Convert all images in left oriented ones
         side = self.df['side'].iloc[idx]
+        img_id = self.df['img_id'].iloc[idx]
         if side == 'R' and self.level == 'image':
             img = cv2.flip(img, 1)
-            self.flip_coordinates(idx)
+            self.flip_coordinates(img_id)
 
         # Normalize
         if self.normalize == 'min_max':
@@ -466,23 +487,31 @@ class INBreast_Dataset(Dataset):
             rois_from_img = self.rois_df.img_id == self.df['img_id'].iloc[idx]
             bboxes_coords = self.rois_df.loc[rois_from_img, 'lesion_bbox_crop'].values
             sample["lesion_bboxes"] = [
-                utils.load_coords(bbox) if isinstance(bbox, 'str')
+                utils.load_coords(bbox) if isinstance(bbox, str)
                 else bbox for bbox in bboxes_coords
             ]
         else:
-            sample["lesion_bboxes"] = [self.rois_df.img_id == self.df['roi_bbox'].iloc[idx]]
+            sample["roi_bbox"] = [self.df['roi_bbox'].iloc[idx]]
 
         # Load lesion mask
         if self.lesions_mask:
             if self.level == 'image':
                 mask_path = \
-                    self.full_mask_path / f'{self.df["img_id"].iloc[idx]}_mask.png'
-                mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
-                mask = self.adjust_mask_to_selected_lesions(mask, idx)
+                    self.full_mask_path / f'{self.df["img_id"].iloc[idx]}_lesion_mask.png'
+                if not mask_path.exists():
+                    mask = np.zeros(img.shape)
+                else:
+                    mask = cv2.imread(str(mask_path), cv2.IMREAD_GRAYSCALE)
+                    mask = self.adjust_mask_to_selected_lesions(mask, idx)
+                if side == 'R':
+                    mask = cv2.flip(mask, 1)
             else:
-                mask = cv2.imread(
-                    self.df['mask_filename'].iloc[idx], cv2.IMREAD_ANYDEPTH
-                )
+                mask_filename = self.df['mask_filename'].iloc[idx]
+                if mask_filename != 'empty_mask':
+                    mask_filename = self.rois_mask_path / mask_filename
+                    mask = cv2.imread(str(mask_filename), cv2.IMREAD_ANYDEPTH)
+                else:
+                    mask = np.zeros(img.shape)
             sample["lesion_mask"] = np.where(mask != 0, 255, 0)
 
         # Apply transformations
@@ -517,52 +546,61 @@ class INBreast_Dataset(Dataset):
         """
         rois_from_img = self.rois_df.img_id == self.df['img_id'].iloc[idx]
         lesion_idxs = self.rois_df.loc[rois_from_img, 'index_in_image'].values
-        for les_idx in np.unique(mask):
-            if les_idx not in lesion_idxs:
-                mask[mask == les_idx] = 0
+        if len(lesion_idxs) != 0:
+            for les_idx in np.unique(mask):
+                if les_idx not in lesion_idxs:
+                    mask[mask == les_idx] = 0
+        else:
+            mask = np.zeros(mask.shape)
         return mask
 
-    def flip_coordinates(self, idx: int):
+    def flip_coordinates(self, img_id: int):
         """
         If the image is flipped, the coordinates of the points in the df should be flipped
         Specially the bbox, which also need to keep the the upper left
         bottom right convention.
         Args:
-            idx (int): idx of the example to analyse
+            img_id (int): img_id of the example to analyse
         """
-        img_id = self.df['img_id'].iloc[idx]
+        # img_id = self.df['img_id'].iloc[idx]
         breast_bbox = utils.load_coords(
-            self.img_df.loc[self.img_df.img_id == img_id, 'breast_bbox']
+            self.img_df.loc[self.img_df.img_id == img_id, 'breast_bbox'].values[0],
+            dtype=int
         )
         bbox_shape = (
             breast_bbox[1][0] - breast_bbox[0][0],
             breast_bbox[1][1] - breast_bbox[0][1]
         )
-        centers = self.rois_df.loc[self.rois_df.img_id == img_id, 'center_crop'].values
+        centers = self.rois_df.loc[self.rois_df.img_id == img_id, 'center_crop'].tolist()
+        if isinstance(centers[0], str):
+            centers = [np.array(utils.load_point(point, 'int')) for point in centers]
+        else:
+            centers = [np.array(point) for point in centers]
         for k, center in enumerate(centers):
-            center = utils.load_point(center, 'int')
             centers[k][0] = bbox_shape[0] - center[0]
-        self.rois_df.loc[self.rois_df.img_id == img_id, 'center_crop'] = centers
+        centers = [tuple(center) for center in centers]
 
         lesion_bboxs_crop = \
-            self.rois_df.loc[self.rois_df.img_id == img_id, 'lesion_bbox_crop'].values
+            self.rois_df.loc[self.rois_df.img_id == img_id, 'lesion_bbox_crop'].tolist()
         for k, lesion_bbox_crop in enumerate(lesion_bboxs_crop):
-            lesion_bbox_crop = utils.load_coords(lesion_bbox_crop, 'int')
+            if isinstance(lesion_bbox_crop, str):
+                lesion_bbox_crop = utils.load_coords(lesion_bbox_crop, 'int')
             lesion_bbox_crop = [
                 (bbox_shape[0] - point[0], point[1]) for point in lesion_bbox_crop
             ]
             lesion_bboxs_crop[k] = [
-                (lesion_bbox_crop[1, 0], lesion_bbox_crop[0, 1]),
-                (lesion_bbox_crop[0, 0], lesion_bbox_crop[1, 1]),
+                (lesion_bbox_crop[1][0], lesion_bbox_crop[0][1]),
+                (lesion_bbox_crop[0][0], lesion_bbox_crop[1][1]),
             ]
-        self.rois_df.loc[self.rois_df.img_id == img_id, 'lesion_bbox_crop'] = \
-            lesion_bboxs_crop
 
         point_pxs_crop = self.rois_df.loc[self.rois_df.img_id == img_id, 'point_px_crop'].values
         for k, point_px_crop in enumerate(point_pxs_crop):
-            point_px_crop = utils.load_coords(point_px_crop, 'int')
+            if isinstance(point_px_crop, str):
+                point_px_crop = utils.load_coords(point_px_crop, 'int')
             point_pxs_crop[k] = [
                 (bbox_shape[0] - point[0], point[1]) for point in point_px_crop
             ]
-        self.rois_df.loc[self.rois_df.img_id == img_id, 'point_px_crop'] = \
-            point_pxs_crop
+        for k, row in enumerate(self.rois_df.loc[self.rois_df.img_id == img_id].iterrows()):
+            self.rois_df.at[row[0], 'center_crop'] = centers[k]
+            self.rois_df.at[row[0], 'lesion_bbox_crop'] = lesion_bboxs_crop[k]
+            self.rois_df.at[row[0], 'point_px_crop'] = point_pxs_crop[k]
