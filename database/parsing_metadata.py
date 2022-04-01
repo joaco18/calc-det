@@ -389,8 +389,8 @@ def main():
         images_row['partition'] = 'train'
 
         images_df = images_df.append(pd.Series(images_row), ignore_index=True)
-        im_array = (im_array - im_array.min()) / (im_array.max() - im_array.min()) * 255
-        im_array = im_array.astype('uint8')
+        # im_array = (im_array - im_array.min()) / (im_array.max() - im_array.min()) * 255
+        # im_array = im_array.astype('uint8')
         cv2.imwrite(str(png_name), im_array)
 
         if xml_filepath.exists():
