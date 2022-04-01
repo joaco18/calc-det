@@ -77,7 +77,7 @@ def extract_ROIs(
     return image_slices, mask_slices, slices_descr
 
 
-def zero_padd_image(image: np.ndarray, window_size: int, padd_type=BORDER_CONSTANT):
+def padd_image(image: np.ndarray, window_size: int, padd_type=BORDER_CONSTANT):
     """
     Padds given image with the desired padding type on the bottom and right sides to ensure
     safe slicing of the image with a given window size and any stride multiple of it.
