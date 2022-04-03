@@ -347,6 +347,9 @@ def main():
         'micros', 'distortion', 'asymmetry', 'breast_bbox', 'partition'
     ])
 
+    # Load the predefined training set
+    train_set_images = pd.read_pickle('../data/train_set_ids.pkl')
+
     # Read each dicom and parse the respective xml file
     for filename in tqdm(dcm_folder.iterdir(), total=len(os.listdir(dcm_folder))):
         if filename.suffix != '.dcm':
@@ -385,8 +388,9 @@ def main():
         # Update dataframes and write mask and png version of the image
         png_name = png_folder/f'{img_id}.png'
         images_row['filename'] = png_name
-        # TODO: FIX THIS
-        images_row['partition'] = 'train'
+
+        # Generate partition label:
+        images_row['partition'] = 'train' if img_id in train_set_images else 'test'
 
         images_df = images_df.append(pd.Series(images_row), ignore_index=True)
         # im_array = (im_array - im_array.min()) / (im_array.max() - im_array.min()) * 255
@@ -399,7 +403,9 @@ def main():
 
     # Save metadata in csv
     rois_df = format_roi_df(rois_df)
+    rois_df.sort_values(by='img_id', inplace=True)
     images_df = add_image_and_case_label(images_df)
+    images_df.sort_values(by='img_id', inplace=True)
     images_df.to_csv(csvs_path/'images_metadata.csv')
     rois_df.to_csv(csvs_path/'rois_metadata.csv')
 
