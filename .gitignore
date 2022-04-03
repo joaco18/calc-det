@@ -1,6 +1,6 @@
 # data
-data
-data/
+data/train_img_filename.pkl
+data/INbreast Release 1.0
 database/preparing_data.py
 database/Untitled.ipynb
 stolen
