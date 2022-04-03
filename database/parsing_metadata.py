@@ -13,7 +13,6 @@ from pathlib import Path
 from typing import List
 from tqdm import tqdm
 
-#TODO: Add datasets partitions
 
 def load_point(point_string: str, dtype: str = 'float'):
     if dtype == 'float':
@@ -105,8 +104,6 @@ def readxml(filename: Path, metadata_img: dict, im_shape: tuple):
             del(roi['Name'])
             roi['lesion_bbox'], roi['Center'] = extract_bbox(points)
             roi['IndexInImage'] = roi['IndexInImage'] + 1
-            # TODO:FIX THIS
-            roi['partition'] = 'train'
 
             # Add metadata coming from excel
             roi.update(metadata_img)
@@ -357,6 +354,9 @@ def main():
         img_id = filename.name.split('_')[0]
         metadata_img = parse_metadata_from_excel(img_id, df_excel)
         metadata_img['case_id'] = filename.name.split('_')[1]
+        
+        # Generate partition label:
+        metadata_img['partition'] = 'train' if img_id in train_set_images else 'test'
 
         # Avoid reprocessing
         mask_filepath = masks_folder / f'{img_id}_mask.png'
@@ -388,9 +388,6 @@ def main():
         # Update dataframes and write mask and png version of the image
         png_name = png_folder/f'{img_id}.png'
         images_row['filename'] = png_name
-
-        # Generate partition label:
-        images_row['partition'] = 'train' if img_id in train_set_images else 'test'
 
         images_df = images_df.append(pd.Series(images_row), ignore_index=True)
         # im_array = (im_array - im_array.min()) / (im_array.max() - im_array.min()) * 255
