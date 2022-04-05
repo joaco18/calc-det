@@ -39,14 +39,15 @@ def extract_bbox(points: List[np.ndarray]):
         points (List[np.ndarray]): Points in the lesion contour
     Returns:
         bbox_coords (List[np.ndarray]): top-left and right-bottom coords.
-        center_coords (tuple)
+            Returned in (x,y) format
+        center_coords (tuple): Returned in (x,y) format.
     """
     points = np.array(points, dtype='int')
     bbox_coords = [tuple(points.min(axis=0)), tuple(points.max(axis=0))]
-    width = bbox_coords[1][1] - bbox_coords[0][1]
-    heigth = bbox_coords[1][0] - bbox_coords[0][0]
+    heigth = bbox_coords[1][1] - bbox_coords[0][1]
+    width = bbox_coords[1][0] - bbox_coords[0][0]
     center_coords = \
-        (bbox_coords[0][0] - int(heigth/2), bbox_coords[0][1] - int(width/2))
+        (bbox_coords[0][0] + int(width/2), bbox_coords[0][1] + int(heigth/2))
     return bbox_coords, center_coords
 
 
@@ -71,7 +72,7 @@ def readxml(filename: Path, metadata_img: dict, im_shape: tuple):
         'IndexInImage', 'Max', 'Mean', 'Min', 'NumberOfPoints', 'Point_mm', 'Point_px',
         'Point_px_crop', 'Total', 'Type', 'lesion_bbox', 'lesion_bbox_crop', 'stored',
         'acr', 'birads', 'finding_notes', 'lesion_annot', 'pectoral_muscle',
-        'artifact', 'lesion_type'
+        'artifact', 'lesion_type', 'radius', 'partition'
     ])
     images_row = {}
     mask = np.zeros(im_shape)
@@ -95,6 +96,7 @@ def readxml(filename: Path, metadata_img: dict, im_shape: tuple):
                     f'Roi ignored in file {filename}, there are missing points in the ROI'
                 )
                 continue
+            # The points in the XML file are stored in (x,y) format, opencv needs this format
             points = [load_point(point, 'int') for point in points]
             roi['Point_px'] = points
             roi['Point_mm'] = [load_point(point) for point in roi['Point_mm']]
@@ -107,7 +109,7 @@ def readxml(filename: Path, metadata_img: dict, im_shape: tuple):
             roi.update(metadata_img)
 
             # Add lesion to the mask
-            label = roi['IndexInImage'] + 1
+            label = roi['IndexInImage']
             roi['stored'] = True
             if len(points) <= 2:
                 for point in points:
@@ -173,8 +175,8 @@ def get_breast_bbox(image: np.ndarray):
     Args:
         image (np.ndarray): Breast image to be croped.
     Return:
-        out_bbox (List[tuple]): Coordinates of the bounding box.
-            [(y,x), (y+h, x+w)] (topleft, rightbottom)
+        breast_bbox (List[tuple]): Coordinates of the bounding box.
+            [(x, y), (x+w, y+h)] (topleft, rightbottom)
         mask (np.ndarray): binary mask image of the breast.
     """
 
@@ -187,18 +189,14 @@ def get_breast_bbox(image: np.ndarray):
 
     # Get the areas of each connected component
     sizes = stats[:, -1]
-    # Keep the largest connected component
-    max_label = np.argmax(sizes[1:])
+    # Keep the largest connected component excluding bkgd
+    max_label = np.argmax(sizes[1:]) + 1
+    x, y, w, h = stats[max_label, 0:4]
+    breast_bbox = [(x, y), (x+w, y+h)]
 
     # Generate a binary mask for the breast
     mask = np.zeros(img.shape)
     mask[output == max_label] = 1
-
-    # Obtain the contour of the breast and generate bbox.
-    contours, _ = cv2.findContours(img, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
-    x, y, w, h = cv2.boundingRect(contours[0])
-    # print(x, y, w, h)
-    breast_bbox = [(y, x), (y+h, x+w)]
     return breast_bbox, mask
 
 
@@ -207,23 +205,28 @@ def update_rois_coords(roi_df: pd.DataFrame, breast_bbox: List[tuple]):
     Uses the origin of the bbox of the breast to update the coordinates
     of the different points in the dataframe.
     Args:
-        roi_df (pd.DataFrame): _description_
-        breast_bbox (List[tuple]): _description_
+        roi_df (pd.DataFrame): df including all roi's metadata.
+        breast_bbox (List[tuple]): Coordinates of the bounding box.
+            [(x, y), (x+w, y+h)] (topleft, rightbottom).
     Returns:
-        _type_: _description_
+        out_df (pd.DataFrame): df with the coordinates in the cropped
+            image.
     """
     out_df = roi_df.copy()
-    [y_ori, x_ori] = np.array(breast_bbox[0])
+    [x_ori, y_ori] = np.array(breast_bbox[0])
     for new_column in ['Point_px_crop', 'lesion_bbox_crop', 'Center_crop']:
         out_df[new_column] = np.nan
         out_df[new_column] = out_df[new_column].astype('object')
     for row in roi_df.iterrows():
         out_df.at[row[0], 'Point_px_crop'] = \
-            [(point[1] - y_ori, point[0] - x_ori) for point in row[1]['Point_px']]
+            [(point[0] - x_ori, point[1] - y_ori) for point in row[1]['Point_px']]
         out_df.at[row[0], 'lesion_bbox_crop'] = \
-            [(point[1] - y_ori, point[0] - x_ori) for point in row[1]['lesion_bbox']]
+            [(point[0] - x_ori, point[1] - y_ori) for point in row[1]['lesion_bbox']]
         out_df.at[row[0], 'Center_crop'] = \
-            (row[1]['Center'][0] - y_ori, row[1]['Center'][1] - x_ori)
+            (row[1]['Center'][0] - x_ori, row[1]['Center'][1] - y_ori)
+        _, out_df.at[row[0], 'radius'] = cv2.minEnclosingCircle(
+            np.asarray(out_df.at[row[0], 'Point_px_crop'])
+        )
     return out_df
 
 
@@ -251,7 +254,7 @@ def format_roi_df(rois_df: pd.DataFrame):
         'Assymetry': 'asymmetry',
         'Spiculated region': 'spiculated_region',
     }
-    rois_df.fillna('unkown', inplace=True)
+    rois_df.fillna('unknown', inplace=True)
     rois_df.replace({"lesion_type": replacements}, inplace=True)
     return (rois_df)
 
@@ -296,7 +299,8 @@ def main():
         '--rp', dest='reprocess', action='store_true',
         help='Whether to reprocess the case if the mask already exists or not')
     parser.add_argument(
-        '--v', dest='verbose', action='store_true', help='Wheter to print the warnings or not')
+        '--v', dest='verbose', action='store_true',
+        help='Wheter to print the warnings or not')
     parser.add_argument(
         '--cb', dest='crop_breast', action='store_true',
         help='Just save the breast region in the pngs.')
@@ -310,8 +314,9 @@ def main():
     # Generate paths and directories
     base_path = Path(args.ib_path)
     csvs_path = base_path if args.csvs_dir is None else Path(args.csvs_dir)
-    png_folder = base_path / 'AllPNGs' if args.pngs_dir is None else Path(args.pngs_dir)
-    masks_folder = base_path / 'AllMasks' if args.masks_dir is None else Path(args.masks_dir)
+    png_folder = base_path/'AllPNGs'/'full_imgs' if args.pngs_dir is None else Path(args.pngs_dir)
+    masks_folder = \
+        base_path/'AllMasks'/'full_imgs' if args.masks_dir is None else Path(args.masks_dir)
     dcm_folder = base_path / 'AllDICOMs'
     xml_folder = base_path / 'AllXML'
 
@@ -330,14 +335,17 @@ def main():
         'IndexInImage', 'Max', 'Mean', 'Min', 'NumberOfPoints', 'Point_mm', 'Point_px',
         'Point_px_crop', 'Total', 'Type', 'lesion_bbox', 'lesion_bbox_crop', 'stored',
         'acr', 'birads', 'mass', 'micros', 'distortion', 'asymmetry', 'finding_notes',
-        'lesion_annot', 'pectoral_muscle', 'artifact', 'lesion_type'
+        'lesion_annot', 'pectoral_muscle', 'artifact', 'lesion_type', 'radius', 'partition'
     ])
 
     images_df = pd.DataFrame(columns=[
         'img_id', 'n_rois', 'side', 'view', 'filename', 'acr', 'artifact', 'birads',
         'case_id', 'finding_notes', 'lesion_annot', 'pectoral_muscle', 'mass',
-        'micros', 'distortion', 'asymmetry', 'breast_bbox'
+        'micros', 'distortion', 'asymmetry', 'breast_bbox', 'partition'
     ])
+
+    # Load the predefined training set
+    train_set_images = pd.read_pickle('data/train_set_ids.pkl')
 
     # Read each dicom and parse the respective xml file
     for filename in tqdm(dcm_folder.iterdir(), total=len(os.listdir(dcm_folder))):
@@ -346,6 +354,9 @@ def main():
         img_id = filename.name.split('_')[0]
         metadata_img = parse_metadata_from_excel(img_id, df_excel)
         metadata_img['case_id'] = filename.name.split('_')[1]
+        
+        # Generate partition label:
+        metadata_img['partition'] = 'train' if img_id in train_set_images else 'test'
 
         # Avoid reprocessing
         mask_filepath = masks_folder / f'{img_id}_mask.png'
@@ -368,10 +379,10 @@ def main():
         if args.crop_breast:
             # If indicated extract the breast bbox and update rois coords
             bbox, _ = get_breast_bbox(im_array.copy())
-            im_array = im_array[bbox[0][0]:bbox[1][0], bbox[0][1]:bbox[1][1]]
-            mask = mask[bbox[0][0]:bbox[1][0], bbox[0][1]:bbox[1][1]]
-            roi_df = update_rois_coords(roi_df.copy(), bbox.copy()) \
-                if xml_filepath.exists() else roi_df
+            im_array = im_array[bbox[0][1]:bbox[1][1], bbox[0][0]:bbox[1][0]]
+            mask = mask[bbox[0][1]:bbox[1][1], bbox[0][0]:bbox[1][0]]
+            if xml_filepath.exists():
+                roi_df = update_rois_coords(roi_df.copy(), bbox.copy())
             images_row['breast_bbox'] = bbox
 
         # Update dataframes and write mask and png version of the image
@@ -379,6 +390,8 @@ def main():
         images_row['filename'] = png_name
 
         images_df = images_df.append(pd.Series(images_row), ignore_index=True)
+        # im_array = (im_array - im_array.min()) / (im_array.max() - im_array.min()) * 255
+        # im_array = im_array.astype('uint8')
         cv2.imwrite(str(png_name), im_array)
 
         if xml_filepath.exists():
@@ -387,7 +400,9 @@ def main():
 
     # Save metadata in csv
     rois_df = format_roi_df(rois_df)
+    rois_df.sort_values(by='img_id', inplace=True)
     images_df = add_image_and_case_label(images_df)
+    images_df.sort_values(by='img_id', inplace=True)
     images_df.to_csv(csvs_path/'images_metadata.csv')
     rois_df.to_csv(csvs_path/'rois_metadata.csv')
 

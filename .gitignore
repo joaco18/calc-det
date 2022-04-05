@@ -1,11 +1,11 @@
 # data
-data
-data/
-database/dataset.py
-database/masks.py
+data/train_img_filename.pkl
+data/INbreast Release 1.0
 database/preparing_data.py
 database/Untitled.ipynb
-database/utils.py
+stolen
+stolen/
+notebooks/data_parsing_dev.ipynb
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
