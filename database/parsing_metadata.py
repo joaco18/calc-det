@@ -86,7 +86,7 @@ def readxml(filename: Path, metadata_img: dict, im_shape: tuple):
         rois = image_dict['ROIs']
 
         if len(rois) != image_dict['NumberOfROIs']:
-            logging.warning(f'Xml {filename} ignored, missing rois')
+            logging.warning(f'Xml {filename} has missing rois')
 
         # Extract datapoints of the lesion roi
         for roi in rois:
@@ -114,7 +114,7 @@ def readxml(filename: Path, metadata_img: dict, im_shape: tuple):
             if len(points) <= 2:
                 for point in points:
                     try:
-                        mask[int(point[0]), int(point[1])] = label
+                        mask[int(point[1]), int(point[0])] = label
                     except Exception as e:
                         logging.warning(
                             f'ROI {roi["IndexInImage"]} of image '
@@ -225,7 +225,7 @@ def update_rois_coords(roi_df: pd.DataFrame, breast_bbox: List[tuple]):
         out_df.at[row[0], 'Center_crop'] = \
             (row[1]['Center'][0] - x_ori, row[1]['Center'][1] - y_ori)
         _, out_df.at[row[0], 'radius'] = cv2.minEnclosingCircle(
-            np.asarray(out_df.at[row[0], 'Point_px_crop'])
+            np.asarray(out_df.at[row[0], 'Point_px'])
         )
     return out_df
 
@@ -272,8 +272,8 @@ def add_image_and_case_label(img_df: pd.DataFrame):
     img_df['img_label'] = 'normal'
 
     pathologic = (
-        (img_df.mass == True) | (img_df.micros == True) |
-        (img_df.distortion == True) | (img_df.asymmetry == True)
+        (img_df.mass) | (img_df.micros) |
+        (img_df.distortion) | (img_df.asymmetry)
     )
     pathologic_studies = img_df.loc[pathologic, 'case_id'].unique()
     img_df.loc[img_df.case_id.isin(pathologic_studies), 'case_label'] = 'abnormal'
@@ -341,7 +341,7 @@ def main():
     images_df = pd.DataFrame(columns=[
         'img_id', 'n_rois', 'side', 'view', 'filename', 'acr', 'artifact', 'birads',
         'case_id', 'finding_notes', 'lesion_annot', 'pectoral_muscle', 'mass',
-        'micros', 'distortion', 'asymmetry', 'breast_bbox', 'partition'
+        'micros', 'distortion', 'asymmetry', 'breast_bbox', 'partition', 'img_size'
     ])
 
     # Load the predefined training set
@@ -354,7 +354,7 @@ def main():
         img_id = filename.name.split('_')[0]
         metadata_img = parse_metadata_from_excel(img_id, df_excel)
         metadata_img['case_id'] = filename.name.split('_')[1]
-        
+
         # Generate partition label:
         metadata_img['partition'] = 'train' if img_id in train_set_images else 'test'
 
@@ -384,10 +384,16 @@ def main():
             if xml_filepath.exists():
                 roi_df = update_rois_coords(roi_df.copy(), bbox.copy())
             images_row['breast_bbox'] = bbox
+        else:
+            for row in roi_df.iterrows():
+                _, roi_df.at[row[0], 'radius'] = cv2.minEnclosingCircle(
+                    np.asarray(roi_df.at[row[0], 'Point_px'])
+                )
 
         # Update dataframes and write mask and png version of the image
         png_name = png_folder/f'{img_id}.png'
         images_row['filename'] = png_name
+        images_row['img_size'] = im_array.shape
 
         images_df = images_df.append(pd.Series(images_row), ignore_index=True)
         # im_array = (im_array - im_array.min()) / (im_array.max() - im_array.min()) * 255
