@@ -710,7 +710,9 @@ class INBreast_Dataset(Dataset):
                     breast_bbox[1][1] - breast_bbox[0][1]
                 )
             else:
-                image_size = utils.load_point(self.img_df.loc[self.img_df.img_id == img_id, 'img_size'].values[0])
+                image_size = utils.load_point(
+                    self.img_df.loc[self.img_df.img_id == img_id, 'img_size'].values[0]
+                )
                 bbox_shape = (image_size[1], image_size[0])
 
             centers = self.rois_df.loc[self.rois_df.img_id == img_id, center_tag].tolist()
