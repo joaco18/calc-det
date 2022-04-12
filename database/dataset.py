@@ -73,6 +73,7 @@ class INBreast_Dataset(Dataset):
         nrows: int = None,
         seed: int = 0,
         return_lesions_mask: bool = False,
+        return_indexes_in_mask: bool = False,
         level: str = 'image',
         partitions: List[str] = ['train', 'test'],
         max_lesion_size_mm: float = 1.0,
@@ -147,6 +148,7 @@ class INBreast_Dataset(Dataset):
         self.data_aug = data_aug
         self.lesions_mask = return_lesions_mask
         self.normalize = normalize
+        self.return_indexes_in_mask = return_indexes_in_mask
         self.lesion_types = lesion_types
         self.max_lesion_size_px = int(max_lesion_size_mm / 0.07)
 
@@ -519,7 +521,11 @@ class INBreast_Dataset(Dataset):
                     mask = cv2.imread(str(mask_filename), cv2.IMREAD_ANYDEPTH)
                 else:
                     mask = np.zeros(img.shape)
-            sample["lesion_mask"] = np.where(mask != 0, 255, 0)
+
+            if self.return_indexes_in_mask:
+                sample["lesion_mask"] = mask
+            else:
+                sample["lesion_mask"] = np.where(mask != 0, 255, 0)
 
         # Apply transformations
         if self.transform is not None:
