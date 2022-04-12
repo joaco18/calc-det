@@ -640,7 +640,11 @@ class INBreast_Dataset(Dataset):
                     mask = cv2.imread(str(mask_filename), cv2.IMREAD_ANYDEPTH)
                 else:
                     mask = np.zeros(img.shape)
-            sample["lesion_mask"] = np.where(mask != 0, 255, 0)
+            # Consider the cases with lesions inside lesions
+            holes = mask.astype('float32').copy()
+            cv2.floodFill(holes, None, (0, 0), newVal=1)
+            holes = np.where(holes == 0, 255, 0)
+            sample['lesion_mask'] = mask + holes.astype('uint8')
 
         # Apply transformations
         # Warning: normalization should be indicated as a Transformation
