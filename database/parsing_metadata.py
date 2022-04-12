@@ -88,7 +88,8 @@ def readxml(filename: Path, metadata_img: dict, im_shape: tuple):
         if len(rois) != image_dict['NumberOfROIs']:
             logging.warning(f'Xml {filename} has missing rois')
 
-        # Extract datapoints of the lesion roi
+        # Extract datapoints of the lesion roi and order them
+        # in descending order of size (to avoid maskin of ovelapping rois)
         for roi in rois:
             points = roi['Point_px']
             if roi['NumberOfPoints'] != len(points):
@@ -108,25 +109,30 @@ def readxml(filename: Path, metadata_img: dict, im_shape: tuple):
             # Add metadata coming from excel
             roi.update(metadata_img)
 
+            roi['stored'] = True
+            roi['Area'] = cv2.contourArea(np.array(points))
+            rois_df = rois_df.append(pd.Series(roi), ignore_index=True)
+        rois_df.sort_values('Area', ascending=False, inplace=True, ignore_index=False)
+
+        for indx, roi in rois_df.iterrows():
             # Add lesion to the mask
             label = roi['IndexInImage']
-            roi['stored'] = True
+            points = roi['Point_px']
             if len(points) <= 2:
                 for point in points:
                     try:
                         mask[int(point[1]), int(point[0])] = label
                     except Exception as e:
+                        print('entra en warning')
                         logging.warning(
                             f'ROI {roi["IndexInImage"]} of image '
                             f'{roi["img_id"]} not stored,'
                             f'coordinates out of boundary. Exception {e}. '
                             f'Point: {point}. Image size {mask.shape}'
                         )
-                        roi['stored'] = False
+                        rois_df.loc[indx, 'stored'] = False
             else:
                 cv2.fillPoly(mask, pts=[np.asarray(points, dtype='int')], color=label)
-            # Update datafrrame
-            rois_df = rois_df.append(pd.Series(roi), ignore_index=True)
     return images_row, rois_df, mask
 
 
