@@ -1,5 +1,5 @@
-import numpy as np
 import cv2
+import numpy as np
 
 
 def dehaze(image: np.ndarray, omega: float, window_size: int, radius=40, eps=1e-3):
@@ -16,7 +16,8 @@ def dehaze(image: np.ndarray, omega: float, window_size: int, radius=40, eps=1e-
         np.ndarray: Dehazed iamge
     """
     # minimum filtering OpenCV
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (window_size, window_size))
+    kernel = cv2.getStructuringElement(
+        cv2.MORPH_RECT, (window_size, window_size))
     darck_ch = cv2.erode(image, kernel)
 
     recovered_image = 1 - (1 - image)/(1 - omega*darck_ch)
