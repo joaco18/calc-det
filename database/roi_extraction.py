@@ -7,6 +7,7 @@ from skimage.util.shape import view_as_windows
 LEISION_TYPES = ['asymmetry', 'calcification',
                  'cluster', 'distortion', 'mass', 'normal']
 
+
 # TODO: This should be deleted but the notebook of patches won't run
 def extract_ROIs(
     image: np.ndarray, mask: np.ndarray, roi_df: pd.DataFrame, window_size: int,
@@ -105,14 +106,17 @@ def slice_image(image: np.ndarray, window_size: int, stride: int):
             np.ndarray: Numpy view of the sliced image patches
                         of shape (n_patches, w_size, w_size)
     """
-    if window_size % stride != 0:
-        raise(ValueError("Window size must be a multiple of stride"))
+    # TODO: This should contemplate the case in which the stride is larger than the patch size
+    # if window_size % stride != 0:
+    #     raise(ValueError("Window size must be a multiple of stride"))
     img_pathces = view_as_windows(image, window_size, stride)
     shape = img_pathces.shape
     return img_pathces.reshape((shape[0] * shape[1], shape[2], shape[3]))
 
 
-def reconstruct_patches(patches: np.ndarray, original_image: np.ndarray, window_size: int, stride: int):
+def reconstruct_patches(
+    patches: np.ndarray, original_image: np.ndarray, window_size: int, stride: int
+):
     """Reconstructs images from an array of image patches obtained
     by slicing the image with a sliding window of given size and stride
 
@@ -140,7 +144,9 @@ def reconstruct_patches(patches: np.ndarray, original_image: np.ndarray, window_
     return reconstructed_image
 
 
-def destride_array(patches: np.ndarray, original_image: np.ndarray, window_size: int, stride: int):
+def destride_array(
+    patches: np.ndarray, original_image: np.ndarray, window_size: int, stride: int
+):
     """Removes overlapping patches after slicing  an image with a stride < window_size.
 
     Args:
