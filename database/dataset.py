@@ -74,6 +74,7 @@ class INBreast_Dataset(Dataset):
         nrows: int = None,
         seed: int = 0,
         return_lesions_mask: bool = False,
+        return_indexes_in_mask: bool = False,
         level: str = 'image',
         partitions: List[str] = ['train', 'test'],
         max_lesion_diam_mm: float = 1.0,
@@ -150,6 +151,7 @@ class INBreast_Dataset(Dataset):
         self.data_aug = data_aug
         self.lesions_mask = return_lesions_mask
         self.normalize = normalize
+        self.return_indexes_in_mask = return_indexes_in_mask
         self.lesion_types = lesion_types
         self.max_lesion_diam_px = int(max_lesion_diam_mm / 0.07)
         self.cropped_imgs = cropped_imgs
@@ -182,7 +184,7 @@ class INBreast_Dataset(Dataset):
                         'The largest lesion selected doesn\' fit inside the patch ' \
                         'size selected.\n Please modify it or use \'all\' extraction method.'
 
-                    self.patches_df = self.centered_rois_extraction()
+                    self.patches_df = self.centered_patches_extraction()
                     self.patches_df.to_csv(str(dfpath/'complete_rois_metadata.csv'))
             else:
                 self.patches_df = pd.read_csv(
@@ -420,19 +422,19 @@ class INBreast_Dataset(Dataset):
 
         return patches_descr
 
-    def centered_rois_extraction(self):
+    def centered_patches_extraction(self):
         """
         Extracts rois of a fixed size centered in each lesion.
         The processing is done in parallel to make it faster.
         """
-        # Get leasion patches
+        # Get lesion patches
         n_rows = self.img_df.shape[0]
         res = []
         # for i in tqdm(range(n_rows), total=n_rows):            # Kept for easy debbuging
-        #     res.append(self.extract_centered_rois_from_image(i))
+        #     res.append(self.extract_centered_patches_from_image(i))
         with mp.Pool(self.n_jobs) as pool:
             for result in tqdm(
-                pool.imap(self.extract_centered_rois_from_image, range(n_rows)),
+                pool.imap(self.extract_centered_patches_from_image, range(n_rows)),
                 total=n_rows
             ):
                 res.append(result)
@@ -456,7 +458,7 @@ class INBreast_Dataset(Dataset):
         patches_df = pd.concat([patches_df, normal_patches_df])
         return patches_df.sort_values(by='img_id')
 
-    def extract_centered_rois_from_image(self, idx: int):
+    def extract_centered_patches_from_image(self, idx: int):
         """
         Extracts the rois from an image using a bbox centered at each lesion.
         Args:
@@ -531,10 +533,10 @@ class INBreast_Dataset(Dataset):
 
             if patch_x2 > image_size[1]:
                 image = np.pad(
-                    image, ((0, self.patch_size), (0, 0)), mode='constant', constant_values=0
+                    image, ((0, 0), (0, self.patch_size)), mode='constant', constant_values=0
                 )
                 mask = np.pad(
-                    mask, ((0, self.patch_size), (0, 0)), mode='constant', constant_values=0
+                    mask, ((0, 0), (0, self.patch_size)), mode='constant', constant_values=0
                 )
             if patch_y2 > image_size[0]:
                 image = np.pad(
@@ -548,13 +550,13 @@ class INBreast_Dataset(Dataset):
             image_patch = image[patch_y1:patch_y2, patch_x1:patch_x2]
             mask_patch = mask[patch_y1:patch_y2, patch_x1:patch_x2]
 
-            # Get the percentage of breast in the roi
+            # Get the percentage of breast in the patch
             breast_fraction = \
                 ((image_patch != 0).sum()) / (image_patch.shape[0] * image_patch.shape[1])
             if breast_fraction < self.min_breast_frac:
                 continue
 
-            # Save rois and masks
+            # Save patches and masks
             if self.normalize == 'min_max':
                 image_patch = utils.min_max_norm(image_patch, 255)
             image_patch = image_patch.astype('uint8')
