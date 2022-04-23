@@ -393,16 +393,18 @@ class INBreast_Dataset(Dataset):
                 patch_mask_filenames.append('empty_mask')
                 continue
             roi_name = f'{img_id}_roi_{roi_idx}.png'
-            patch_filenames.append(roi_name)
+            patch_filenames.append(f'{img_id}/{roi_name}')
             if self.normalize == 'min_max':
                 temp = utils.min_max_norm(image_patches[roi_idx, :, :], 255)
             else:
                 temp = image_patches[roi_idx, :, :]
-            cv2.imwrite(str(self.patch_img_path/roi_name), temp)
+            (self.patch_img_path/str(img_id)).mkdir(parents=True, exist_ok=True)
+            cv2.imwrite(str(self.patch_img_path/str(img_id)/roi_name), temp)
 
             if mask_patches[roi_idx, :, :].any():  # Empty images cannot be stored
                 roi_mask_name = f'{img_id}_roi_{roi_idx}_mask.png'
-                patch_mask_filenames.append(roi_mask_name)
+                patch_mask_filenames.append(f'{img_id}/{roi_mask_name}')
+                (self.patch_mask_path/str(img_id)).mkdir(parents=True, exist_ok=True)
                 cv2.imwrite(str(self.patch_mask_path/roi_mask_name), mask_patches[roi_idx, :, :])
             else:
                 patch_mask_filenames.append('empty_mask')
@@ -442,15 +444,15 @@ class INBreast_Dataset(Dataset):
 
         # Get normal patches
         res = []
-        # for i in tqdm(range(n_rows), total=n_rows):            # Kept for easy debbuging
-        #     res.append(self.extract_patches_from_image(i, save_lesions=False))
-        partial_func = partial(self.extract_patches_from_image, save_lesions=False)
-        with mp.Pool(self.n_jobs) as pool:
-            for result in tqdm(
-                pool.imap(partial_func, range(n_rows)),
-                total=n_rows
-            ):
-                res.append(result)
+        for i in tqdm(range(n_rows), total=n_rows):            # Kept for easy debbuging
+            res.append(self.extract_patches_from_image(i, save_lesions=False))
+        # partial_func = partial(self.extract_patches_from_image, save_lesions=False)
+        # with mp.Pool(self.n_jobs) as pool:
+        #     for result in tqdm(
+        #         pool.imap(partial_func, range(n_rows)),
+        #         total=n_rows
+        #     ):
+        #         res.append(result)
         normal_patches_df = pd.concat(res, ignore_index=True)
         normal_patches_df = normal_patches_df.loc[normal_patches_df.label == 'normal']
 
@@ -561,10 +563,12 @@ class INBreast_Dataset(Dataset):
                 image_patch = utils.min_max_norm(image_patch, 255)
             image_patch = image_patch.astype('uint8')
             patch_filename = f'{img_id}_les_patch_{k}.png'
-            cv2.imwrite(str(self.patch_img_path/patch_filename), image_patch)
+            (self.patch_img_path/str(img_id)).mkdir(parents=True, exist_ok=True)
+            cv2.imwrite(str(self.patch_img_path/str(img_id)/patch_filename), image_patch)
             if mask_patch.any():  # Empty images cannot be stored
+                (self.patch_mask_path/str(img_id)).mkdir(parents=True, exist_ok=True)
                 patch_mask_name = f'{img_id}_les_patch_{k}_mask.png'
-                cv2.imwrite(str(self.patch_mask_path/patch_mask_name), mask_patch)
+                cv2.imwrite(str(self.patch_mask_path/str(img_id)/patch_mask_name), mask_patch)
             else:
                 patch_mask_name = 'empty_mask'
 
@@ -577,7 +581,8 @@ class INBreast_Dataset(Dataset):
 
             patch_bbox = np.array([[patch_x1, patch_y1], [patch_x2, patch_y2]])
             patches_descr_row.extend(
-                [breast_fraction, patch_bbox, patch_filename, patch_mask_name]
+                [breast_fraction, patch_bbox, f'{img_id}/{patch_filename}',
+                 f'{img_id}/{patch_mask_name}']
             )
             for element in columns_of_interest:
                 patches_descr_row.append(self.img_df[element].iloc[idx])

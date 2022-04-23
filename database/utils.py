@@ -3,12 +3,16 @@ import numpy as np
 
 
 def load_point(point_string: str, dtype: str = 'float'):
+    if isinstance(point_string, tuple):
+        return point_string
     return tuple(
         [int(num) for num in point_string.strip('()').split(', ')]
     )
 
 
 def load_coords(point_string: str, dtype: str = 'float'):
+    if isinstance(point_string, tuple):
+        return point_string
     return tuple(
         [load_point(num, 'int') for num in point_string.strip('[]').split('), (')]
     )
