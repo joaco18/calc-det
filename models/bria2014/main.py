@@ -148,6 +148,8 @@ def main():
     D, F = 1., 1.
     D_target, F_target = 0.99**5, 0.3**5
 
+    feature_modules = fe.feature_instantiator(14, 'all')
+    
     train_labels = 'ALGO'
     val_labels = 'ALGO'
     val_features = 'ALGO'
@@ -155,7 +157,6 @@ def main():
     pool = []
     F_prev = F
 
-    #TODO: Define feature_modules from the actually running features
     node_classifiers = []
     while F_curr > F_target and len(pool) != 0:
         F_curr = F_prev
@@ -177,7 +178,7 @@ def main():
             weak_collection.append(
                 WeakClassifier(
                     threshold=theta, alpha=alpha, feature_indx=feature_idx,
-                    classifier=features_modules[feature_idx]
+                    classifier=feature_modules[feature_idx]
                 )
             )
 

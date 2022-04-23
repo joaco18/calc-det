@@ -100,3 +100,28 @@ class ImgDataset:
         xs, ys = self.load_imgs(self.val_pos_cases_list, self.val_neg_cases_list)
 
         return val_files_list, xs, ys
+
+
+class FeaturesDataset:
+    def __init__(
+        self, pos_df: pd.DataFrame, neg_df: pd.DataFrame,
+        kr: float = 5, normalize: bool = False, seed: int = 42
+    ):
+        self.pos_df = pos_df
+        self.neg_df = neg_df
+        self.kr = kr
+        self.nomalize = normalize
+        self.seed = seed
+
+        self.train_discarded_files = []
+        self.val_discarded_files = []
+
+        self.train_pos_cases_list = self.pos_df['filename'].sample(
+            frac=0.5, replace=False, random_state=self.seed
+        )
+        self.train_pos_cases_list = self.train_pos_cases_list.tolist()
+        condition = ~self.pos_df.filename.isin(self.train_pos_cases_list)
+        self.val_pos_cases_list = self.pos_df.loc[condition, 'filename'].tolist()
+
+        self.n_neg = len(self.train_pos_cases_list) * self.kr
+        self.used_neg_files = []
