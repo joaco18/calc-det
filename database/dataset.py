@@ -738,10 +738,12 @@ class INBreast_Dataset(Dataset):
                 lesion_bbox_crop = [
                     (bbox_shape[0] - point[0], point[1]) for point in lesion_bbox_crop
                 ]
-                lesion_bboxs_crop[k] = [
-                    (lesion_bbox_crop[1][0], lesion_bbox_crop[0][1]),
-                    (lesion_bbox_crop[0][0], lesion_bbox_crop[1][1]),
-                ]
+                side = self.img_df.loc[self.img_df.img_id == img_id, 'side'].values[0]
+                if side == 'R':
+                    lesion_bboxs_crop[k] = [
+                        (lesion_bbox_crop[1][0], lesion_bbox_crop[0][1]),
+                        (lesion_bbox_crop[0][0], lesion_bbox_crop[1][1]),
+                    ]
 
             point_pxs_crop = self.rois_df.loc[self.rois_df.img_id == img_id, poit_tag].values
             for k, point_px_crop in enumerate(point_pxs_crop):
