@@ -140,6 +140,5 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
-
-# extra
+# extrashit
 images/
