@@ -1,4 +1,5 @@
 import os
+import multiprocessing as mp
 from pathlib import Path
 
 import cv2
@@ -18,8 +19,9 @@ class HoughCalcificationDetection:
                  hough1_params: dict,
                  hough2_params: dict,
                  erosion_iter=30,
-                 erosion_size=6):
-        """Constructor for detection class
+                 erosion_size=6,
+                 n_jobs=6):
+        """Constructor for detHoughCalcificationDetection class
 
         Args:
             dehazing_params (dict): parameters used for dehazing
@@ -44,12 +46,13 @@ class HoughCalcificationDetection:
         self.hough2_params = hough2_params
         self.erosion_iter = erosion_iter
         self.erosion_size = erosion_size
+        self.n_jobs = 6
 
     def predict(self, image: np.ndarray, image_id: int, load_processed_images=True):
         """Detects mC for a given image
 
         Args:
-            image (np.ndarray): Image for detection.
+            image (np.ndarray): Grayscale image for detection.
             image_id (int): Image id used to save/load images
             load_processed_images (bool, optional): Whether to load image from
                 processed_imgs_path or to process them again. Defaults to True.
@@ -73,32 +76,35 @@ class HoughCalcificationDetection:
         return processed_image, h1_circles, h2_circles
 
     def load_preprocessed_image(self, image, image_id, load_processed_images):
+        """Loads images and performs image engancing needed for Hough transform.
+        Either loads already preprocessed images or loads raw images, enhances them
+        and saves them into a given folder.
+        """
         img_path = self.processed_imgs_path/f'{image_id}.tiff'
+        processed_image = None
         if load_processed_images:
             if not self.processed_imgs_path.exists():
                 print(f"{self.processed_imgs_path} not found - creating one")
                 os.makedirs(str(self.processed_imgs_path))
 
-            if (img_path).exists():
+            if img_path.exists():
                 processed_image = cv2.imread(str(img_path),
                                              cv2.IMREAD_ANYDEPTH)
             else:
-                # print("Processing image")
                 processed_image = self.enhance_image(image)
                 cv2.imwrite(str(img_path), processed_image)
-                # print("Saved image")
         else:
-            # print("Processing image")
             processed_image = self.enhance_image(image)
             cv2.imwrite(str(img_path), processed_image)
-            # print("Saved image")
         return processed_image
 
     def enhance_image(self, image):
+        """Performs image enhancment needed for Hough Detection
+        """
         # 1. CONTRAST ENHANCEMENT - EQUALIZATION
         normalized_image = self.min_max_norm(image.astype(np.float32))
-        dehazed_image = dehaze(normalized_image, **self.dehazing_params)
-
+        # dehazed_image = dehaze(normalized_image, **self.dehazing_params)
+        dehazed_image = normalized_image
         #  2. BACKGROUND EXTRACTION
         background = restoration.rolling_ball(
             dehazed_image, radius=self.back_ext_radius)
@@ -119,8 +125,10 @@ class HoughCalcificationDetection:
         return sobel_f2
 
     def hough1(self, processed_image, alpha1=0.97):
+        """First global hough circles detection on saturated image
+        """
+        
         # 5. FIRST [GLOBAL] THRESHOLDING and HOUGH
-
         # 5.1 Saturation to alpha1
         alpha1_intensity = np.quantile(processed_image, q=alpha1)
         processed_image[processed_image <= alpha1_intensity] = 0
@@ -138,43 +146,52 @@ class HoughCalcificationDetection:
         """
         # 6. SECOND [LOCAL] HOUGH
         hough2_circles = []
-        for circle in hough1_circles:
-
-            cx, cy, cr = circle
-            # get coordinates of 200*200 cropped patch aroung circle
-            x1, x2, y1, y2 = self.crop_center_coords(cx, cy, processed_image,
-                                                     patch_size=patch_size)
-            h2_normalized_patch = processed_image[y1:y2, x1:x2].copy()
-
-            image_circle_mask = cv2.circle(np.zeros(processed_image.shape),
-                                           (cx, cy), cr, 1, -1).astype(bool)
-            patch_circle_mask = image_circle_mask[y1:y2, x1:x2].copy()
-
-            # saturation of circle intensities to the mean in whole window
-            mean_window_int = np.mean(h2_normalized_patch)
-            circle_values = h2_normalized_patch[patch_circle_mask]
-            circle_values[circle_values <= mean_window_int] = mean_window_int
-            h2_normalized_patch[patch_circle_mask] = circle_values
-
-            # saturation to alpha2 of all window
-            alpha2_intens = np.quantile(h2_normalized_patch[h2_normalized_patch > 0],
-                                        q=alpha2)
-            h2_normalized_patch[h2_normalized_patch <=
-                                alpha2_intens] = alpha2_intens
-
-            h2_normalized_patch = self.min_max_norm(h2_normalized_patch)
-            h2_normalized_patch = 255 * \
-                (self.normalize_image(h2_normalized_patch) > 0)
-            h2_normalized_patch = h2_normalized_patch.astype(np.uint8)
-            h2_circ = cv2.HoughCircles(
-                h2_normalized_patch, **self.hough2_params)
-            if h2_circ is not None:
-                # scaling back circle coordinates to whole image scale from patch scale
-                h2_circles_scaled = [[c[0] + x1, c[1] + y1, c[2]]
-                                     for c in h2_circ[0]]
-                hough2_circles.extend(h2_circles_scaled)
+        self.processed_image = processed_image
+        
+        with mp.Pool(self.n_jobs) as pool:
+            for result in pool.map(self.process_patch_hough2, hough1_circles):
+                hough2_circles.extend(result)        
+        
         return np.asarray(hough2_circles).astype(int)
 
+    def process_patch_hough2(self, circle, alpha2=0.95, patch_size=100):
+    
+        cx, cy, cr = circle
+        # get coordinates of 200*200 cropped patch aroung circle
+        x1, x2, y1, y2 = self.crop_center_coords(cx, cy, self.processed_image,
+                                                    patch_size=patch_size)
+        h2_normalized_patch = self.processed_image[y1:y2, x1:x2].copy()
+
+        image_circle_mask = cv2.circle(np.zeros(self.processed_image.shape),
+                                        (cx, cy), cr, 1, -1).astype(bool)
+        patch_circle_mask = image_circle_mask[y1:y2, x1:x2].copy()
+
+        # saturation of circle intensities to the mean in whole window
+        mean_window_int = np.mean(h2_normalized_patch)
+        circle_values = h2_normalized_patch[patch_circle_mask]
+        circle_values[circle_values <= mean_window_int] = mean_window_int
+        h2_normalized_patch[patch_circle_mask] = circle_values
+
+        # saturation to alpha2 of all window
+        alpha2_intens = np.quantile(h2_normalized_patch[h2_normalized_patch > 0],
+                                    q=alpha2)
+        h2_normalized_patch[h2_normalized_patch <=
+                            alpha2_intens] = alpha2_intens
+
+        h2_normalized_patch = self.min_max_norm(h2_normalized_patch)
+        h2_normalized_patch = 255 * \
+            (self.normalize_image(h2_normalized_patch) > 0)
+        h2_normalized_patch = h2_normalized_patch.astype(np.uint8)
+        h2_circ = cv2.HoughCircles(
+            h2_normalized_patch, **self.hough2_params)
+        h2_circles_scaled = []
+        if h2_circ is not None:
+            # scaling back circle coordinates to whole image scale from patch scale
+            h2_circles_scaled = [[c[0] + x1, c[1] + y1, c[2]]
+                                    for c in h2_circ[0]]    
+        return h2_circles_scaled
+
+    
     @staticmethod
     def min_max_norm(img):
         return (img - img.min())/(img.max() - img.min())
