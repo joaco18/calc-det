@@ -48,7 +48,7 @@ class HoughCalcificationDetection:
         self.erosion_size = erosion_size
         self.n_jobs = 6
 
-    def predict(self, image: np.ndarray, image_id: int, load_processed_images=True):
+    def detect(self, image: np.ndarray, image_id: int, load_processed_images=True, hough2=False):
         """Detects mC for a given image
 
         Args:
@@ -56,9 +56,10 @@ class HoughCalcificationDetection:
             image_id (int): Image id used to save/load images
             load_processed_images (bool, optional): Whether to load image from
                 processed_imgs_path or to process them again. Defaults to True.
+            hough2 (bool): Whether to calculate and output results of second
+                (local) hough circles search
 
         Returns:
-            processed_image (np.ndarray): preprocessed image before first saturation
             h1_circles (np.ndarray): of shape (#_detected_circles, 3) corresponding
                 to the first global hough transform where second axis contains
                 circle_x, circle_y, circle_radius parameters
@@ -70,10 +71,13 @@ class HoughCalcificationDetection:
         # 5. Global Hough
         h1_circles = self.hough1(processed_image)
 
-        # 6. Local Hough
-        h2_circles = self.hough2(processed_image, h1_circles)
-
-        return processed_image, h1_circles, h2_circles
+        if hough2:
+            # 6. Local Hough
+            h2_circles = self.hough2(processed_image, h1_circles)
+        else:
+            h2_circles = None
+        
+        return h1_circles, h2_circles
 
     def load_preprocessed_image(self, image, image_id, load_processed_images):
         """Loads images and performs image engancing needed for Hough transform.
@@ -103,8 +107,7 @@ class HoughCalcificationDetection:
         """
         # 1. CONTRAST ENHANCEMENT - EQUALIZATION
         normalized_image = self.min_max_norm(image.astype(np.float32))
-        # dehazed_image = dehaze(normalized_image, **self.dehazing_params)
-        dehazed_image = normalized_image
+        dehazed_image = dehaze(normalized_image, **self.dehazing_params)
         #  2. BACKGROUND EXTRACTION
         background = restoration.rolling_ball(
             dehazed_image, radius=self.back_ext_radius)
