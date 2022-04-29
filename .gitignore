@@ -6,6 +6,8 @@ database/Untitled.ipynb
 stolen
 stolen/
 notebooks/data_parsing_dev.ipynb
+models/HDoGDetector/temp_main.py
+models/general_utils/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
