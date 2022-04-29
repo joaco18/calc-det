@@ -1,7 +1,7 @@
-from marasinou_class import HDoGCalcificationDetection
+from mc_candidate_proposal.hdog_mc import HDoGCalcificationDetection
 from database.dataset import INBreast_Dataset
-# import time
 import logging
+# import time
 # from tqdm import tqdm
 
 

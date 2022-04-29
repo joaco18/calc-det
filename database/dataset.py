@@ -74,7 +74,6 @@ class INBreast_Dataset(Dataset):
         nrows: int = None,
         seed: int = 0,
         return_lesions_mask: bool = False,
-        return_indexes_in_mask: bool = False,
         level: str = 'image',
         partitions: List[str] = ['train', 'test'],
         max_lesion_diam_mm: float = 1.0,
@@ -151,7 +150,6 @@ class INBreast_Dataset(Dataset):
         self.data_aug = data_aug
         self.lesions_mask = return_lesions_mask
         self.normalize = normalize
-        self.return_indexes_in_mask = return_indexes_in_mask
         self.lesion_types = lesion_types
         self.max_lesion_diam_px = int(max_lesion_diam_mm / 0.07)
         self.cropped_imgs = cropped_imgs
@@ -642,11 +640,12 @@ class INBreast_Dataset(Dataset):
                     mask = cv2.imread(str(mask_filename), cv2.IMREAD_ANYDEPTH)
                 else:
                     mask = np.zeros(img.shape)
-            # Consider the cases with lesions inside lesions
-            holes = mask.astype('float32').copy()
-            cv2.floodFill(holes, None, (0, 0), newVal=1)
-            holes = np.where(holes == 0, 255, 0)
-            sample['lesion_mask'] = mask + holes.astype('uint8')
+
+          # Consider the cases with lesions inside lesions
+          holes = mask.astype('float32').copy()
+          cv2.floodFill(holes, None, (0, 0), newVal=1)
+          holes = np.where(holes == 0, 255, 0)
+          sample['lesion_mask'] = mask + holes.astype('uint8')
 
         # Apply transformations
         # Warning: normalization should be indicated as a Transformation

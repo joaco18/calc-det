@@ -3,7 +3,7 @@ import h5py
 import logging
 import subprocess
 
-import sys; sys.path.insert(0, '../../')  # TODO: Remove this ugly thing
+# import sys; sys.path.insert(0, '../')  # TODO: Remove this ugly thing
 
 import numpy as np
 import skimage.feature as skift
@@ -13,7 +13,7 @@ from itertools import combinations_with_replacement
 from skimage.util.dtype import img_as_float
 from pathlib import Path
 from scipy import spatial
-from metrics.utils import blob_overlap, min_max_norm
+from metrics.metrics_utils import blob_overlap, min_max_norm
 # from skimage._shared.coord import ensure_spacing
 
 
@@ -135,7 +135,8 @@ class HDoGCalcificationDetection:
             img_id (int): Id of the image
             load_processed (bool, optional): Whether to use preprocessed data (dog, hessians,
                 raw_detections if available to accelerate experiments). Defaults to True.
-            save_results (bool, optional): Whether to store the final detections for further use. Defaults to True.
+            save_results (bool, optional): Whether to store the final detections for
+                further use. Defaults to True.
         Returns:
             detections (np.ndarray): Array with filtered detections as rows (x, y, sigma)
             candidate_detections (np.ndarray): Array with raw detections as rows (x, y, sigma)
