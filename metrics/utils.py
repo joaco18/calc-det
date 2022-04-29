@@ -108,6 +108,7 @@ def blob_overlap(blob1, blob2):
 
     return compute_disk_overlap(d, r1, r2)
 
+
 @njit(cache=True)
 def compare_and_filter_pairs(pairs: np.ndarray, blobs_array: np.ndarray, overlap: float):
     """Check if closes detections have an overlapping greater than the threshold
