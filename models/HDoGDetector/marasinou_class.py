@@ -258,6 +258,7 @@ class HDoGCalcificationDetection:
         if not self.dataset_path.exists():
             return False
         # Check if the data for the particular image exists
+        # TODO: change this
         with h5py.File(self.dataset_path, 'r') as f:
             data_in_file = f'{self.image_id}/dog' in f
             data_in_file = data_in_file and f'{self.image_id}/hessian_info' in f
@@ -552,6 +553,7 @@ class HDoGCalcificationDetection:
             #     _ = f.create_dataset(f'{self.image_id}/hessian_parameters/{k}', data=v)
             _ = f.create_dataset(f'{self.image_id}/raw_detections', data=raw_detections)
             _ = f.create_dataset(f'{self.image_id}/hessian_detections', data=hess_detections)
-    
+
     def delete_hdog_file(self):
         subprocess.call(['rm', str(self.dataset_path)])
+        subprocess.call(['rm', str(self.raw_detections_path)])
