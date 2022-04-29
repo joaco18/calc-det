@@ -1,70 +1,106 @@
+import enum
+
 import cv2
 import numpy as np
 
-def circle_comparison(true_bboxes, predicted_roi_circles, mask, n_jobs=6):
-    """Finds TP, FP and number of FN for a prediction of circles given image mask
+
+def circle_comparison(predicted_roi_circles, mask, return_counts=True):
+    """Finds TP, FP and FN among predicted circles based on the true image mask.
+
     More precise circle comparison. Checks the intersection of each predicted circle
-    with the true leision bbox
+    with the true leision bbox and counts a TP if >=1 roi pixel is in the circle.
 
     Args:
         true_bboxes (np.ndarray): Array of shape (n_rois, 2) containing
-            tl and br bbox coordinates in tuples
+            top_left and bottom_right bbox coordinates in tuples
         predicted_roi_circles (np.ndarray): Array of shape (n_predicted_circ, 3)
             with circle_x, circle_y and circle_radius values
         mask (np.ndarray): Image mask containing indexes of rois
+        return_counts (bool, optional): Whether to return counts of TP, FP, FN arrays
+            or corresponding indexes. Defaults to True.
 
     Returns:
-        TP (set): contains TP roi indexes
-        FP (set): contains FP circle indexes (thate weren't mapped to any rois)
-        FN (int): number of rois not mapped to any of the predicted circles
+        If return_counts=True:
+            (TP, FP, FN) (tuple[int]): number of TP, FP, FN
+        else:
+            TP (set): contains indexes of ROIs correctly selected by predicted circles
+            FP (set): contains indexes of circles that weren't mapped to any roi
+            FN (set): indexes of ROIs not mapped to any of the predicted circles
     """
     TP = set()
     FP = []
     
+    # set containing background pixel value in the mask
+    back_set = set([0])
+
     for circle_idx, circle in enumerate(predicted_roi_circles.astype(int)):
-        circle_roi_mask=cv2.circle(np.zeros(mask.shape),
+        circle_roi_mask = cv2.circle(np.zeros(mask.shape),
                                      (circle[0], circle[1]),
                                      circle[2], 1, -1).astype(np.bool8)
-
-        mapped_rois_idxs=set(np.unique(mask[circle_roi_mask])).difference(set([0]))
+        
+        # retrieving roi idxs from the mask from the circle
+        mapped_rois_idxs = set(
+            np.unique(mask[circle_roi_mask])).difference(back_set)
         if len(mapped_rois_idxs) > 0:
             TP = TP.union(mapped_rois_idxs)
         else:
             FP.append(circle_idx)
-    FN = len(true_bboxes) - len(TP)
-    return TP, FP, FN
+    FN = set(mask.ravel()).difference(back_set).difference(TP)
+
+    if return_counts:
+        return (len(TP), len(FP), len(FN))
+    else:
+        return TP, FP, FN
 
 
+def quick_circle_comparison(predicted_roi_circles, mask, return_counts=True):
+    """Finds TP, FP and FN among predicted circles based on the true image mask.
 
-def quick_circle_comparison(true_bboxes, predicted_roi_circles, mask, n_jobs=6):
-    """Finds TP, FP and number of FN for a prediction of circles given image mask
-    Quick vesrsion that looks at intersection between given true lesion mask
-    and predicted bbox mask created by overlapping all predicted bboxes in one mask
+    Quick version that checks if a rectangular bbox around each circle in the image
+    mask contains any roi indexes and counts a TP if >= 1 roi pixel is in that bbox.
+
     Args:
         true_bboxes (np.ndarray): Array of shape (n_rois, 2) containing
-            tl and br bbox coordinates in tuples
+            top_left and bottom_right bbox coordinates in tuples
         predicted_roi_circles (np.ndarray): Array of shape (n_predicted_circ, 3)
             with circle_x, circle_y and circle_radius values
         mask (np.ndarray): Image mask containing indexes of rois
+        return_counts (bool, optional): Whether to return counts of TP, FP, FN arrays
+            or corresponding indexes. Defaults to True.
 
     Returns:
-        TP (set): contains TP roi indexes
-        FP (int): contains FP circle indexes (thate weren't mapped to any rois)
-        FN (int): number of rois not mapped to any of the predicted circles
-    """
-    TP = []
-    FP = 0
-    FN = 0
-    
-    for circle in predicted_roi_circles.astype(int):
-        cricle_tl = (max(0, circle[0] - circle[2]), max(0, circle[1] - circle[2]))
-        circle_br = (min(mask.shape[1], circle[0] + circle[2]), min(mask.shape[0], circle[1] + circle[2]))
-        
-        intersected_mask_idxs = np.unique(mask[cricle_tl[1]:circle_br[1], cricle_tl[0]:circle_br[0]])
-        if intersected_mask_idxs.sum()>0:
-            TP.extend(intersected_mask_idxs)
+        If return_counts=True:
+            (TP, FP, FN) (tuple[int]): number of TP, FP, FN
         else:
-            FP+=1
-    TP = set(np.unique(TP)).difference(set([0]))
-    FN = len(true_bboxes) - len(TP)
-    return TP, FP, FN
+            TP (set): contains indexes of ROIs correctly selected by predicted circles
+            FP (set): contains indexes of circles that weren't mapped to any roi
+            FN (set): indexes of ROIs not mapped to any of the predicted circles
+    """
+    TP = set()
+    FP = []
+
+    # set containing background pixel value in the mask
+    back_set = set([0])
+
+    for circle_idx, circle in enumerate(predicted_roi_circles.astype(int)):
+        # finds a bbox around each circles and checks if in the mask it contains any rois
+        cricle_tl = (max(0, circle[0] - circle[2]),
+                     max(0, circle[1] - circle[2]))
+        circle_br = (min(mask.shape[1], circle[0] + circle[2]),
+                     min(mask.shape[0], circle[1] + circle[2]))
+
+        # looks at pixels in the mask at the circle's bbox
+        intersected_mask_idxs = set(
+            mask[cricle_tl[1]:circle_br[1], cricle_tl[0]:circle_br[0]].ravel()).difference(back_set)
+        if len(intersected_mask_idxs) > 0:
+            TP = TP.union(intersected_mask_idxs)
+        else:
+            FP.append(circle_idx)
+    TP = set(TP).difference(back_set)
+    FP = set(FP)
+    FN = set(mask.ravel()).difference(set([0])).difference(TP)
+
+    if return_counts:
+        return (len(TP), len(FP), len(FN))
+    else:
+        return TP, FP, FN

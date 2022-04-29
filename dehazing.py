@@ -1,3 +1,13 @@
+"""
+Spatial Enhancement by Dehazing of grayscale images using Dark Channel Prior.
+
+Reference: Bria, A. et al. (2017). Spatial Enhancement by Dehazing for Detection
+of Microcalcifications with Convolutional Nets. In: Battiato, S., Gallo,
+G., Schettini, R., Stanco, F. (eds) Image Analysis and Processing - ICIAP 2017 . 
+ICIAP 2017. Lecture Notes in Computer Science(), vol 10485. Springer, 
+Cham. https://doi.org/10.1007/978-3-319-68548-9_2
+"""
+
 import cv2
 import numpy as np
 
@@ -20,6 +30,8 @@ def dehaze(image: np.ndarray, omega: float, window_size: int, radius=40, eps=1e-
         cv2.MORPH_RECT, (window_size, window_size))
     darck_ch = cv2.erode(image, kernel)
 
+    # substracting estimated dark channel that contains
+    # 'haze' from the origianal image
     recovered_image = 1 - (1 - image)/(1 - omega*darck_ch)
     filtered_image = cv2.ximgproc.guidedFilter(recovered_image, recovered_image,
                                                radius=radius, eps=eps)

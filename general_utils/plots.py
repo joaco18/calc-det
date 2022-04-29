@@ -21,25 +21,29 @@ def simple_im_show2(img, mask, figsize=(10, 10)):
     plt.show()
 
 
-def plot_bboxes_over_image(image, bboxes, colors, types, thickness=2, alpha=0.8):
-    """Overimposes bboxes on the image. Can work with multiple groups of bboxes
+def plot_bboxes_over_image(image, bboxes, colors, types, thickness=2, alpha=0.2):
+    """Overimposes bboxes on the image. Can work with multiple groups and types of bboxes.
     Args:
-        image (np.ndarray): Grayscale image for overimposition
-        bboxes (List[np.ndarray]): List of bboxes arrays.
-            Should be one of the specific shape depending of bbox type:
-                (n_bboxes, top_left_coord, top_right_coordinate) - rect type
-                    top_left_coord, top_right_coordinate - tuples with 2 integer coords
-                (n_bboxes, centre_x, centre_y, radius) - circ type
-                    center coordinates and radiuses should be integers
-        colors (list): List of colors to be assigned to the bboxes. BGR convention
-        types (list): List of types: 'rect' OR 'circ'
+        image (np.ndarray): Single channel grayscale image for overimposition.
+        bboxes (list[np.ndarray]): List of bboxes. Each element of the list
+            should have one of the specific shapes depending of bbox type:
+                (n_bboxes, top_left_coord, top_right_coordinate) - 'rect' type, where
+                    top_left_coord, top_right_coordinate - are tuples with 2 integer coords
+                (n_bboxes, centre_x, centre_y, radius) - 'circ' type
+                    center coordinates - and radiuses should be integers
+        colors (list[tuple]): List of colors to be assigned to the bboxes. In BGR convention.
+        types (list[str]): List of bbox types: 'rect' OR 'circ'.
+        thickness (int, optional): Bbox plot thickness. Defaults to 2.
+        alpha (float, optional): Transparency of the bboxes. Defaults to 0.2.
+
+    Returns:
+        np.ndaray: 3 channel colored image with overimposed bboxes
     """
-    img_uint8 = (255*(image/image.max())).astype(np.uint8)
-    img_bgr = cv2.cvtColor(img_uint8, cv2.COLOR_GRAY2RGB)
+    img_bgr = (255*(image/image.max())).astype(np.uint8)
+    img_bgr = cv2.cvtColor(img_bgr, cv2.COLOR_GRAY2RGB)
 
     for bbox_group_idx, bbox_group in enumerate(bboxes):
-        bbox_mask = np.zeros(
-            (image.shape[0], image.shape[1], 3)).astype(np.uint8)
+        bbox_mask = np.zeros_like(img_bgr, dtype=np.uint8)
         for bbox in bbox_group:
             if types[bbox_group_idx] == 'rect':
                 bbox_mask = cv2.rectangle(bbox_mask, bbox[0], bbox[1],
@@ -50,5 +54,5 @@ def plot_bboxes_over_image(image, bboxes, colors, types, thickness=2, alpha=0.8)
                                        bbox[2], color=colors[bbox_group_idx],
                                        thickness=thickness)
         beta = 1 - alpha
-        img_bgr = cv2.addWeighted(img_bgr, alpha, bbox_mask, beta, 0.0)
+        img_bgr = cv2.addWeighted(img_bgr, beta, bbox_mask, alpha, 0.0)
     return img_bgr

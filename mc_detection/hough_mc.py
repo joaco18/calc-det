@@ -1,12 +1,11 @@
-import os
 import multiprocessing as mp
 from pathlib import Path
 
 import cv2
 import numpy as np
-from skimage import restoration
-
+from database.utils import crop_center_coords, min_max_norm, sobel_gradient
 from dehazing import dehaze
+from skimage import restoration
 
 
 class HoughCalcificationDetection:
@@ -89,7 +88,7 @@ class HoughCalcificationDetection:
         if load_processed_images:
             if not self.processed_imgs_path.exists():
                 print(f"{self.processed_imgs_path} not found - creating one")
-                os.makedirs(str(self.processed_imgs_path))
+                self.processed_imgs_path.mkdir(parents=True, exists_ok=True)
 
             if img_path.exists():
                 processed_image = cv2.imread(str(img_path),
@@ -106,7 +105,7 @@ class HoughCalcificationDetection:
         """Performs image enhancment needed for Hough Detection
         """
         # 1. CONTRAST ENHANCEMENT - EQUALIZATION
-        normalized_image = self.min_max_norm(image.astype(np.float32))
+        normalized_image = min_max_norm(image, max_val=1)
         dehazed_image = dehaze(normalized_image, **self.dehazing_params)
         #  2. BACKGROUND EXTRACTION
         background = restoration.rolling_ball(
@@ -114,9 +113,9 @@ class HoughCalcificationDetection:
         background_substracted = dehazed_image - background
 
         # 3. SOBEL-GAUSSIAN-SOBEL
-        sobel_f1 = self.sobel_gradient(background_substracted)
+        sobel_f1 = sobel_gradient(background_substracted)
         blured_iamge = cv2.GaussianBlur(sobel_f1, (0, 0), 2)
-        sobel_f2 = self.sobel_gradient(blured_iamge)
+        sobel_f2 = sobel_gradient(blured_iamge)
 
         # 4. BREAST BOUNDARY EROSION
         breast_mask = (image != 0).astype(np.uint8)
@@ -137,7 +136,7 @@ class HoughCalcificationDetection:
         processed_image[processed_image <= alpha1_intensity] = 0
 
         # 5.2 Converting image to supported type by HoughCircles and hough search
-        gradient_normalized = self.normalize_image(processed_image)
+        gradient_normalized = min_max_norm(processed_image, max_val=255).astype(np.uint8)
         processed_image_bin = 255*(gradient_normalized > 0).astype(np.uint8)
         h1_circles = cv2.HoughCircles(
             processed_image_bin, **self.hough1_params)
@@ -161,7 +160,7 @@ class HoughCalcificationDetection:
     
         cx, cy, cr = circle
         # get coordinates of 200*200 cropped patch aroung circle
-        x1, x2, y1, y2 = self.crop_center_coords(cx, cy, self.processed_image,
+        x1, x2, y1, y2 = crop_center_coords(cx, cy, self.processed_image,
                                                     patch_size=patch_size)
         h2_normalized_patch = self.processed_image[y1:y2, x1:x2].copy()
 
@@ -181,9 +180,9 @@ class HoughCalcificationDetection:
         h2_normalized_patch[h2_normalized_patch <=
                             alpha2_intens] = alpha2_intens
 
-        h2_normalized_patch = self.min_max_norm(h2_normalized_patch)
+        h2_normalized_patch = min_max_norm(h2_normalized_patch, max_val=1)
         h2_normalized_patch = 255 * \
-            (self.normalize_image(h2_normalized_patch) > 0)
+            (min_max_norm(h2_normalized_patch, max_val=255).astype(np.uint8) > 0)
         h2_normalized_patch = h2_normalized_patch.astype(np.uint8)
         h2_circ = cv2.HoughCircles(
             h2_normalized_patch, **self.hough2_params)
@@ -193,27 +192,3 @@ class HoughCalcificationDetection:
             h2_circles_scaled = [[c[0] + x1, c[1] + y1, c[2]]
                                     for c in h2_circ[0]]    
         return h2_circles_scaled
-
-    
-    @staticmethod
-    def min_max_norm(img):
-        return (img - img.min())/(img.max() - img.min())
-
-    @staticmethod
-    def sobel_gradient(img):
-        grad_x = cv2.Sobel(img, cv2.CV_32F, 1, 0)
-        grad_y = cv2.Sobel(img, cv2.CV_32F, 0, 1)
-        grad = np.sqrt(grad_x**2 + grad_y**2)
-        return grad
-
-    @staticmethod
-    def normalize_image(img):
-        return (255*(img/np.max(img))).astype(np.uint8)
-
-    @staticmethod
-    def crop_center_coords(cx, cy, image, patch_size=100):
-        x1 = max(0, cx-patch_size)
-        x2 = min(image.shape[1], cx+patch_size)
-        y1 = max(0, cy-patch_size)
-        y2 = min(image.shape[0], cy+patch_size)
-        return x1, x2, y1, y2
