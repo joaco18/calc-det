@@ -6,3 +6,5 @@ scikit-learn
 matplotlib
 SimpleITK == 2.1.1
 scikit-image
+pyradiomics == 3.0.1
+
