@@ -159,6 +159,16 @@ class INBreast_Dataset(Dataset):
         self.rois_df = pd.read_csv(self.rois_df_path, nrows=nrows, index_col=0)
         self.img_df = pd.read_csv(self.img_df_path, nrows=nrows, index_col=0)
 
+        # Filter out the anomalies
+        with open(str(thispath.parent.parent / 'data/abnormal_images.txt'), 'r') as f:
+            abnormal_images_ids = [int(img_id.strip()) for img_id in f.readlines()]
+
+        rois2drop = self.rois_df.index[self.rois_df.img_id.isin(abnormal_images_ids)]
+        self.rois_df.drop(index=rois2drop)
+        
+        imgs2drop = self.img_df.index[self.img_df.img_id.isin(abnormal_images_ids)]
+        self.img_df.drop(index=imgs2drop)
+        
         # Filter dataset based on different criteria
         self.rois_df = self.rois_df.loc[self.rois_df.stored]
         self.rois_df.reset_index(drop=True, inplace=True)
