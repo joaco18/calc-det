@@ -104,13 +104,13 @@ class HDoGCalcificationDetection:
         self.h_thr = hessian_parameters['hessian_threshold']
 
         # Generate paths for the stored precomputed steps based on parameters
-        self.dataset_path = self.processed_imgs_path / \
+        self.hdog_image_path = self.processed_imgs_path / \
             f'dog_ms-{self.min_sigma}_sr-{self.sigma_ratio}_' \
             f'Ms-{self.max_sigma}_m-{self.method}.hdf5'
-        self.raw_detections_path = self.processed_imgs_path / \
+        self.raw_detections_path = self.detections_path / \
             f'det_ms-{self.min_sigma}_sr-{self.sigma_ratio}_Ms-{self.max_sigma}_' \
             f'm-{self.method}_dth-{self.dog_blob_th}.hdf5'
-        self.final_detections_path = self.processed_imgs_path / \
+        self.final_detections_path = self.detections_path / \
             f'det_ms-{self.min_sigma}_sr-{self.sigma_ratio}_Ms-{self.max_sigma}_' \
             f'm-{self.method}_dth-{self.dog_blob_th}_hdiv-{self.h_th_div}_' \
             f'hth-{self.h_thr}.hdf5'
@@ -193,7 +193,6 @@ class HDoGCalcificationDetection:
         if not self.raw_detections_path.exists():
             return False
         with h5py.File(self.raw_detections_path, 'r') as f:
-            # data_in_file = data_in_file and f'{self.image_id}/raw_detections' in f
             data_in_file = f'{self.image_id}/raw_detections' in f
         return data_in_file
 
@@ -201,7 +200,7 @@ class HDoGCalcificationDetection:
         """Load blob candidates to accelerate experiments"""
         with h5py.File(self.raw_detections_path, 'r') as f:
             raw_detections = f[f'{self.image_id}/raw_detections'][:]
-        with h5py.File(self.dataset_path, 'r') as f:
+        with h5py.File(self.hdog_image_path, 'r') as f:
             hessian_info = f[f'{self.image_id}/hessian_info'][:]
         return raw_detections, hessian_info
 
@@ -264,10 +263,10 @@ class HDoGCalcificationDetection:
         """Check if DoG and Hessian are available in disk
         """
         # Check if the file exists
-        if not self.dataset_path.exists():
+        if not self.hdog_image_path.exists():
             return False
         # Check if the data for the particular image exists
-        with h5py.File(self.dataset_path, 'r') as f:
+        with h5py.File(self.hdog_image_path, 'r') as f:
             data_in_file = f'{self.image_id}/dog' in f
             data_in_file = data_in_file and f'{self.image_id}/hessian_info' in f
         return data_in_file
@@ -275,7 +274,7 @@ class HDoGCalcificationDetection:
     def load_preprocessed(self):
         """Loads the DoG and Hessian from disk
         """
-        with h5py.File(self.dataset_path, 'r') as f:
+        with h5py.File(self.hdog_image_path, 'r') as f:
             dog = f[f'{self.image_id}/dog'][:]
             hessian_info = f[f'{self.image_id}/hessian_info'][:]
         return dog, hessian_info
@@ -302,9 +301,9 @@ class HDoGCalcificationDetection:
     def store_preprocessed(self, dog: np.ndarray, hessian_info: np.ndarray):
         """Store DoG and Hessian (eigenvals) for future use
         """
-        self.dataset_path.parent.mkdir(parents=True, exist_ok=True)
-        mode = 'a' if self.dataset_path.exists() else 'w'
-        with h5py.File(self.dataset_path, mode) as f:
+        self.hdog_image_path.parent.mkdir(parents=True, exist_ok=True)
+        mode = 'a' if self.hdog_image_path.exists() else 'w'
+        with h5py.File(self.hdog_image_path, mode) as f:
             _ = f.create_dataset(f'{self.image_id}/dog', data=dog)
             _ = f.create_dataset(f'{self.image_id}/hessian_info', data=hessian_info)
 
@@ -549,16 +548,18 @@ class HDoGCalcificationDetection:
             hess_detections (np.ndarray): Array with detections as rows (x, y, sigma).
                 Detections after filtering
         """
-        if self.final_detections_path.exists():
-            subprocess.call(['rm', str(self.final_detections_path)])
         self.final_detections_path.parent.mkdir(parents=True, exist_ok=True)
         mode = 'a' if self.final_detections_path.exists() else 'w'
         with h5py.File(self.final_detections_path, mode) as f:
-            _ = f.create_dataset(f'{self.image_id}/raw_detections', data=raw_detections)
-            _ = f.create_dataset(
-                f'{self.image_id}/hessian_detections', data=hess_detections
-            )
+            if f'{self.image_id}/raw_detections' not in f:
+                _ = f.create_dataset(
+                    f'{self.image_id}/raw_detections', data=raw_detections
+                )
+            if f'{self.image_id}/hessian_detections' not in f:
+                _ = f.create_dataset(
+                    f'{self.image_id}/hessian_detections', data=hess_detections
+                )
 
     def delete_hdog_file(self):
-        subprocess.call(['rm', str(self.dataset_path)])
+        subprocess.call(['rm', str(self.hdog_image_path)])
         subprocess.call(['rm', str(self.raw_detections_path)])
