@@ -540,10 +540,12 @@ class INBreast_Dataset(Dataset):
                 patch_y2 = roi_center[1] + self.patch_size - patch_half_size
 
             if patch_x2 > image_size[1]:
-                image = np.pad(image, ((0, 0), (0, self.patch_size)),
-                               mode='constant', constant_values=0)
-                mask = np.pad(mask, ((0, 0), (0, self.patch_size)),
-                              mode='constant', constant_values=0)
+                image = np.pad(
+                    image, ((0, 0), (0, self.patch_size)), mode='constant', constant_values=0
+                )
+                mask = np.pad(
+                    mask, ((0, 0), (0, self.patch_size)), mode='constant', constant_values=0
+                )
             if patch_y2 > image_size[0]:
                 image = np.pad(
                     image, ((0, self.patch_size), (0, 0)), mode='constant', constant_values=0
