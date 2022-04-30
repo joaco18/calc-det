@@ -144,9 +144,10 @@ class HDoGCalcificationDetection:
             save_results (bool, optional): Whether to store the final detections for
                 further use. Defaults to True.
         Returns:
-            detections (np.ndarray): Array with filtered detections as rows (x, y, sigma)
+            detections (np.ndarray): Array with filtered detections as rows
+                (x, y, sigma) = (col, row, sigma)
             candidate_detections (np.ndarray): Array with raw detections as rows
-                (x, y, sigma)
+                (x, y, sigma) = (col, row, sigma)
         """
         image = min_max_norm(image, 1)
 
@@ -182,6 +183,9 @@ class HDoGCalcificationDetection:
             detections = self.filter_blob_candidates(candidate_detections, hessian_cube)
         else:
             detections = self.filter_blob_candidates(candidate_detections, hessian_eigval)
+
+        detections = self.convert_yxs2xys(detections)
+        candidate_detections = self.convert_yxs2xys(candidate_detections)
 
         if save_results:
             self.store_final_detections(candidate_detections, detections)
@@ -313,7 +317,8 @@ class HDoGCalcificationDetection:
         Args:
             dog_cube (np.ndarray): multiscal DoG of the orginal image
         Returns:
-            (np.ndarray): Array with candidate detections as rows (x, y, sigma)
+            (np.ndarray): Array with candidate detections as rows 
+                (y, x, sigma) = (row, col, sigma)
         """
         # Get the local maximum
         local_maxima = \
@@ -414,11 +419,13 @@ class HDoGCalcificationDetection:
         """Filters blob candidates based on the overlapping of the blobs and
             on the hessian conditions
         Args:
-            blobs (np.ndarray): array with blob candidates as rows (x, y, sigma)
+            blobs (np.ndarray): array with blob candidates as rows 
+                (y, x, sigma) = (row, col, sigma)
             hessian_info (np.ndarray): containing the HDoG or the eigenvalues
                 of the HDoG depending the method
         Returns:
-            (np.ndarray): array with blob candidates as rows (x, y, sigma)
+            (np.ndarray): array with blob candidates as rows
+                (y, x, sigma) = (row, col, sigma)
         """
         # Filter blobs according to overlapping
         blobs = self.prune_blobs(blobs, self.dog_overlap)
@@ -430,12 +437,14 @@ class HDoGCalcificationDetection:
     def prune_blobs(self, blobs_array: np.ndarray, overlap: float):
         """Eliminates blobs by overlap area fraction.
         Args:
-            blobs_array (np.ndarray): Array with blob candidates as rows (x, y, sigma)
+            blobs_array (np.ndarray): Array with blob candidates as rows
+                (y, x, sigma) = (row, col, sigma)
             overlap (float): A value in [0, 1[. If the fraction of area overlapping
                 for 2 blobs is greater than `overlap` the smaller blob is eliminated.
                 If overlap == 1, then no filtering is done
         Returns:
-            (np.ndarray): Array with blob candidates as rows (x, y, sigma)
+            (np.ndarray): Array with blob candidates as rows
+                (y, x, sigma) = (row, col, sigma)
         """
         if overlap == 1:
             return blobs_array
@@ -452,9 +461,11 @@ class HDoGCalcificationDetection:
         """Check if closes detections have an overlapping greater than the threshold
         Args:
             pairs (np.ndarray): indexes of a pair of close points
-            blobs_array (np.ndarray): array with blobs as rows (x, y, sigma)
+            blobs_array (np.ndarray): array with blobs as rows 
+                (y, x, sigma) = (row, col, sigma)
         Returns:
-            (np.ndarray): filtered array with blobs as rows (x, y, sigma)
+            (np.ndarray): filtered array with blobs as rows
+                (y, x, sigma) = (row, col, sigma)
         """
         for (i, j) in pairs:
             blob1, blob2 = blobs_array[i], blobs_array[j]
@@ -472,10 +483,12 @@ class HDoGCalcificationDetection:
     ):
         """
         Args:
-            blob_candidates (np.ndarray): array with blob candidates as rows (x, y, sigma)
+            blob_candidates (np.ndarray): array with blob candidates as rows
+                (y, x, sigma) = (row, col, sigma)
             hessian_info (np.ndarray): HDoG or eigenvalues of HDoG depending the method
         Returns:
-            (np.ndarray): array with blob candidates as rows (x, y, sigma)
+            (np.ndarray): array with blob candidates as rows
+                (y, x, sigma) = (row, col, sigma)
         """
         blobs_filtered = []
         for sigma in np.unique(blob_candidates[:, 2]):
@@ -537,6 +550,16 @@ class HDoGCalcificationDetection:
         # Check conditions
         hessian_mask = (eig1_ms > thrs_1) & (eig2_ms > thrs_2)
         return hessian_mask
+
+    @staticmethod
+    def convert_yxs2xys(detections: np.ndarray):
+        """turns (y, x, sigma) = (row, col, sigma) into
+                (x, y, sigma) = (col, row, sigma)
+        """
+        temp = detections.copy()
+        detections[:, 0] = temp[:, 1]
+        detections[:, 1] = temp[:, 0]
+        return detections
 
     def store_final_detections(
         self, raw_detections: np.ndarray, hess_detections: np.ndarray
