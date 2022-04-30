@@ -71,3 +71,23 @@ def crop_center_coords(cx, cy, image, patch_size=100):
     y1 = max(0, cy-patch_size)
     y2 = min(image.shape[0], cy+patch_size)
     return x1, x2, y1, y2
+
+
+def get_center_bbox(pt1, pt2):
+    """Gets the center of the bbox given by the tl and br inputed points tuples
+    Returns:
+        (tuple): (xc, yc)
+    """
+    xc = pt1[0] + (pt2[0] - pt1[0]) // 2
+    yc = pt2[0] + (pt2[1] - pt2[0]) // 2
+    return (xc, yc)
+
+
+def get_center_bboxes(bboxes: np.ndarray):
+    """Applies the previous function across all the bboxes present the array
+    Args:
+        bboxes (np.ndarray): array with bboxes as rows [(x0,y0), (x1,y1)]
+    Returns:
+        (np.ndarray): array with centers as rows [(xc,yc)]
+    """
+    return np.asarray([get_center_bbox(bbox[0], bbox[1]) for bbox in bboxes])
