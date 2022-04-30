@@ -13,7 +13,8 @@ from itertools import combinations_with_replacement
 from skimage.util.dtype import img_as_float
 from pathlib import Path
 from scipy import spatial
-from metrics.metrics_utils import blob_overlap, min_max_norm
+from metrics.metrics_utils import compare_and_filter_pairs
+from general_utils.utils import min_max_norm
 # from skimage._shared.coord import ensure_spacing
 
 
@@ -317,7 +318,7 @@ class HDoGCalcificationDetection:
         Args:
             dog_cube (np.ndarray): multiscal DoG of the orginal image
         Returns:
-            (np.ndarray): Array with candidate detections as rows 
+            (np.ndarray): Array with candidate detections as rows
                 (y, x, sigma) = (row, col, sigma)
         """
         # Get the local maximum
@@ -419,7 +420,7 @@ class HDoGCalcificationDetection:
         """Filters blob candidates based on the overlapping of the blobs and
             on the hessian conditions
         Args:
-            blobs (np.ndarray): array with blob candidates as rows 
+            blobs (np.ndarray): array with blob candidates as rows
                 (y, x, sigma) = (row, col, sigma)
             hessian_info (np.ndarray): containing the HDoG or the eigenvalues
                 of the HDoG depending the method
@@ -454,29 +455,8 @@ class HDoGCalcificationDetection:
         pairs = np.array(list(tree.query_pairs(distance)))
         if len(pairs) == 0:
             return blobs_array
-        blobs_array = self.compare_and_filter_pairs(pairs, blobs_array)
+        blobs_array = compare_and_filter_pairs(pairs, blobs_array, self.dog_overlap)
         return blobs_array
-
-    def compare_and_filter_pairs(self, pairs: np.ndarray, blobs_array: np.ndarray):
-        """Check if closes detections have an overlapping greater than the threshold
-        Args:
-            pairs (np.ndarray): indexes of a pair of close points
-            blobs_array (np.ndarray): array with blobs as rows 
-                (y, x, sigma) = (row, col, sigma)
-        Returns:
-            (np.ndarray): filtered array with blobs as rows
-                (y, x, sigma) = (row, col, sigma)
-        """
-        for (i, j) in pairs:
-            blob1, blob2 = blobs_array[i], blobs_array[j]
-            if (blob1[-1] == 0) or (blob2[-1] == 0):
-                continue
-            if blob_overlap(blob1, blob2) > self.dog_overlap:
-                if blob1[-1] > blob2[-1]:
-                    blob2[-1] = 0
-                else:
-                    blob1[-1] = 0
-        return blobs_array[np.where(blobs_array[:, -1] > 0)]
 
     def filter_by_hessian_condition(
         self, blob_candidates: np.ndarray, hessian_info: np.ndarray
