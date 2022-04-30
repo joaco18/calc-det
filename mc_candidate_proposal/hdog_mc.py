@@ -51,7 +51,8 @@ class HDoGCalcificationDetection:
         """Constructor
 
         Args:
-            dog_parameters (dict, optional): Parameters for the DoG blob extraction. Defaults to:
+            dog_parameters (dict, optional): Parameters for the DoG blob extraction.
+                Defaults to:
                 dog_parameters = {
                     'min_sigma': 1.18,
                     'max_sigma': 3.1,
@@ -60,32 +61,33 @@ class HDoGCalcificationDetection:
                     'dog_blob_th': 0.1,
                     'dog_overlap': 1
                 }
-            hessian_parameters (dict, optional): Parameters for the hessian filtering of blobs.
-                Defaults to:
+            hessian_parameters (dict, optional): Parameters for the hessian filtering
+                of blobs. Defaults to:
                 hessian_parameters = {
                     'method': 'marasinou',
                     'hessian_threshold': 1.4,
                     'hessian_th_divider': 500.
                 }
-            processed_imgs_path (str, optional): Directory where the intermediate DoG and Hessians
-                are going to be stored if required. If not specified it a directory
-                data/hdog_preprocessed_images will be generated in the parent of calc-det. Defaults to None.
-            detections_path (str, optional): Directory where the intermediate and final detections
-                are going to be stored if required. If not specified it a directory
-                data/hdog_detections will be generated in the parent of calc-det. Defaults to None.
+            processed_imgs_path (str, optional): Directory where the intermediate
+                DoG and Hessians are going to be stored if required. If not
+                specified it a directory data/hdog_preprocessed_images will
+                be generated in the parent of calc-det. Defaults to None.
+            detections_path (str, optional): Directory where the intermediate and final
+                detections are going to be stored if required. If not specified it a
+                directory data/hdog_detections will be generated in the parent of
+                calc-det. Defaults to None.
         """
         if processed_imgs_path is None:
             self.processed_imgs_path = \
-                Path(__file__).parent.parent.parent.parent.absolute()/'data'/'hdog_preprocessed_images'
+                Path(__file__).parent.parent.absolute()/'data'/'hdog_preprocessed_images'
         else:
             self.processed_imgs_path = Path(processed_imgs_path)
         if detections_path is None:
             self.detections_path = \
-                Path(__file__).parent.parent.parent.parent.absolute()/'data'/'hdog_detections'
+                Path(__file__).parent.parent.absolute()/'data'/'hdog_detections'
         else:
             self.detections_path = Path(detections_path)
 
-        # TODO: this could be replaced with a named tuple or a dataclass
         self.dog_parameters = dog_parameters
         self.hessian_parameters = hessian_parameters
         # DOG parameters
@@ -103,13 +105,15 @@ class HDoGCalcificationDetection:
 
         # Generate paths for the stored precomputed steps based on parameters
         self.dataset_path = self.processed_imgs_path / \
-            f'dog_ms-{self.min_sigma}_sr-{self.sigma_ratio}_Ms-{self.max_sigma}_m-{self.method}.hdf5'
+            f'dog_ms-{self.min_sigma}_sr-{self.sigma_ratio}_' \
+            f'Ms-{self.max_sigma}_m-{self.method}.hdf5'
         self.raw_detections_path = self.processed_imgs_path / \
-            f'det_ms-{self.min_sigma}_sr-{self.sigma_ratio}_Ms-{self.max_sigma}_m-{self.method}_' \
-            f'dth-{self.dog_blob_th}.hdf5'
+            f'det_ms-{self.min_sigma}_sr-{self.sigma_ratio}_Ms-{self.max_sigma}_' \
+            f'm-{self.method}_dth-{self.dog_blob_th}.hdf5'
         self.final_detections_path = self.processed_imgs_path / \
-            f'det_ms-{self.min_sigma}_sr-{self.sigma_ratio}_Ms-{self.max_sigma}_m-{self.method}_' \
-            f'dth-{self.dog_blob_th}_hdiv-{self.h_th_div}_hth-{self.h_thr}.hdf5'
+            f'det_ms-{self.min_sigma}_sr-{self.sigma_ratio}_Ms-{self.max_sigma}_' \
+            f'm-{self.method}_dth-{self.dog_blob_th}_hdiv-{self.h_th_div}_' \
+            f'hth-{self.h_thr}.hdf5'
 
     def get_sigmas(self):
         """Based on the inputed parameter (n_scales or sigma ratio) it generates
@@ -119,7 +123,8 @@ class HDoGCalcificationDetection:
         """
         # Get number of scales or get the sigma ratio depending the arguments inputed.
         if self.n_scales is None:
-            self.n_scales = int(np.log(self.max_sigma / self.min_sigma) / np.log(self.sigma_ratio) + 1)
+            self.n_scales = int(
+                np.log(self.max_sigma / self.min_sigma) / np.log(self.sigma_ratio) + 1)
         else:
             self.sigma_ratio = (self.max_sigma/self.min_sigma) ** (1 / self.n_scales)
         # Progression of standard deviations for gaussian kernels
@@ -133,13 +138,15 @@ class HDoGCalcificationDetection:
         Args:
             image (np.ndarray): Image to process.
             img_id (int): Id of the image
-            load_processed (bool, optional): Whether to use preprocessed data (dog, hessians,
-                raw_detections if available to accelerate experiments). Defaults to True.
+            load_processed (bool, optional): Whether to use preprocessed data
+                (dog, hessians, raw_detections) if available to accelerate
+                experiments. Defaults to True.
             save_results (bool, optional): Whether to store the final detections for
                 further use. Defaults to True.
         Returns:
             detections (np.ndarray): Array with filtered detections as rows (x, y, sigma)
-            candidate_detections (np.ndarray): Array with raw detections as rows (x, y, sigma)
+            candidate_detections (np.ndarray): Array with raw detections as rows
+                (x, y, sigma)
         """
         image = min_max_norm(image, 1)
 
@@ -186,7 +193,6 @@ class HDoGCalcificationDetection:
         if not self.raw_detections_path.exists():
             return False
         with h5py.File(self.raw_detections_path, 'r') as f:
-            # data_in_file = f'{self.image_id}/dog_parameters' in f
             # data_in_file = data_in_file and f'{self.image_id}/raw_detections' in f
             data_in_file = f'{self.image_id}/raw_detections' in f
         return data_in_file
@@ -204,7 +210,7 @@ class HDoGCalcificationDetection:
             if the eigenvalues method is indicated (not Marasinou), then the eigenvalues
             of the hessian are returned insted.
             The computation of DoG, and Hessian eigenvalues, is done in place modifying
-            the gaussians and the hessians, to avoid unnecessary memory usage (large images).
+            the gaussians and the hessians, to avoid unnecessary memory usage.
             If the DoG and Hessian/Hessian eigenvalues are available in disk and it was
             idicated to use them, then the computation is avoided.
         Args:
@@ -224,7 +230,7 @@ class HDoGCalcificationDetection:
             dog = []
             hessian_info = []
             for m, s in enumerate(self.sigma_array):
-                # Get kernel size 4 times std plus an offset following skimage implementation
+                # Get kernel size 4 times std plus an offset from skimage implementation
                 ks = int(4 * s + 0.5)
                 ks = ks if ks % 2 == 1 else ks + 1
 
@@ -233,7 +239,8 @@ class HDoGCalcificationDetection:
                 if m != 0:
                     idx = m - 1
                     # Get the DoG and store in place to avoid using innecesary mem
-                    norm_factor = self.sigma_array[idx] / (self.sigma_array[idx + 1] - self.sigma_array[idx])
+                    norm_factor = self.sigma_array[idx]
+                    norm_factor /= (self.sigma_array[idx + 1] - self.sigma_array[idx])
                     dog[idx] = (dog[idx] - dog[idx + 1]) * norm_factor
 
                     # Compute the Hessian of DoG
@@ -241,7 +248,8 @@ class HDoGCalcificationDetection:
 
                     # Compute the eigenvalues if necessary and store inplace
                     if self.method != 'marasinou':
-                        hessian_info[idx] = skift.hessian_matrix_eigvals(hessian_info[idx])
+                        hessian_info[idx] = \
+                            skift.hessian_matrix_eigvals(hessian_info[idx])
 
             # Get arrays from the lists
             hessian_info = np.asarray(hessian_info)
@@ -259,7 +267,6 @@ class HDoGCalcificationDetection:
         if not self.dataset_path.exists():
             return False
         # Check if the data for the particular image exists
-        # TODO: change this
         with h5py.File(self.dataset_path, 'r') as f:
             data_in_file = f'{self.image_id}/dog' in f
             data_in_file = data_in_file and f'{self.image_id}/hessian_info' in f
@@ -333,7 +340,7 @@ class HDoGCalcificationDetection:
         Args:
             image (np.ndarray): 3d image where local peaks are searched
             min_distance (int, optional): minimum distance between peaks.
-                Defaults to 1. TODO: Check if we can remove it
+                Defaults to 1.
             threshold_abs (float, optional): Minimum intensity of peaks.
             threshold_rel (float, optional): Minimum intensity of peaks,
                 calculated as `max(image) * threshold_rel`. Defaults to None.
@@ -381,7 +388,8 @@ class HDoGCalcificationDetection:
         image: np.ndarray, mask, num_peaks, min_distance, p_norm
     ):
         """
-        Return the highest intensity peak coordinates and check the minimum distance between peaks
+        Return the highest intensity peak coordinates and check the
+        minimum distance between peaks
         """
         # Get coordinates of peaks
         coord = np.nonzero(mask)
@@ -389,10 +397,8 @@ class HDoGCalcificationDetection:
         # Sort peaks descending order
         idx_maxsort = np.argsort(-intensities)
         coord = np.transpose(coord)[idx_maxsort]
-        # logging.info(len(coord))
         # Check that peaks are separated the minumum distance
         # coord = ensure_spacing(coord, spacing=min_distance, p_norm=p_norm)
-        # logging.info(len(coord))
         if len(coord) > num_peaks:
             coord = coord[:num_peaks]
         return coord
@@ -403,10 +409,6 @@ class HDoGCalcificationDetection:
         self.raw_detections_path.parent.mkdir(parents=True, exist_ok=True)
         mode = 'a' if self.raw_detections_path.exists() else 'w'
         with h5py.File(self.raw_detections_path, mode) as f:
-            # for k, v in self.dog_parameters.items():
-            #     _ = f.create_dataset(f'{self.image_id}/dog_parameters/{k}', data=v)
-            # for k, v in self.hessian_parameters.items():
-            #     _ = f.create_dataset(f'{self.image_id}/hessian_parameters/{k}', data=v)
             _ = f.create_dataset(f'{self.image_id}/raw_detections', data=raw_detections)
 
     def filter_blob_candidates(self, blobs: np.ndarray, hessian_info: np.ndarray):
@@ -466,7 +468,9 @@ class HDoGCalcificationDetection:
                     blob1[-1] = 0
         return blobs_array[np.where(blobs_array[:, -1] > 0)]
 
-    def filter_by_hessian_condition(self, blob_candidates: np.ndarray, hessian_info: np.ndarray):
+    def filter_by_hessian_condition(
+        self, blob_candidates: np.ndarray, hessian_info: np.ndarray
+    ):
         """
         Args:
             blob_candidates (np.ndarray): array with blob candidates as rows (x, y, sigma)
@@ -535,7 +539,9 @@ class HDoGCalcificationDetection:
         hessian_mask = (eig1_ms > thrs_1) & (eig2_ms > thrs_2)
         return hessian_mask
 
-    def store_final_detections(self, raw_detections: np.ndarray, hess_detections: np.ndarray):
+    def store_final_detections(
+        self, raw_detections: np.ndarray, hess_detections: np.ndarray
+    ):
         """ Save the final predictions for easy further data analysis
         Args:
             raw_detections (np.ndarray): Array with detections as rows (x, y, sigma).
@@ -548,12 +554,10 @@ class HDoGCalcificationDetection:
         self.final_detections_path.parent.mkdir(parents=True, exist_ok=True)
         mode = 'a' if self.final_detections_path.exists() else 'w'
         with h5py.File(self.final_detections_path, mode) as f:
-            # for k, v in self.dog_parameters.items():
-            #     _ = f.create_dataset(f'{self.image_id}/dog_parameters/{k}', data=v)
-            # for k, v in self.hessian_parameters.items():
-            #     _ = f.create_dataset(f'{self.image_id}/hessian_parameters/{k}', data=v)
             _ = f.create_dataset(f'{self.image_id}/raw_detections', data=raw_detections)
-            _ = f.create_dataset(f'{self.image_id}/hessian_detections', data=hess_detections)
+            _ = f.create_dataset(
+                f'{self.image_id}/hessian_detections', data=hess_detections
+            )
 
     def delete_hdog_file(self):
         subprocess.call(['rm', str(self.dataset_path)])

@@ -7,7 +7,7 @@ import cv2
 import logging
 import pprint
 import random
-import utils
+import general_utils.utils as utils
 
 from functools import partial
 import multiprocessing as mp
@@ -641,11 +641,11 @@ class INBreast_Dataset(Dataset):
                 else:
                     mask = np.zeros(img.shape)
 
-          # Consider the cases with lesions inside lesions
-          holes = mask.astype('float32').copy()
-          cv2.floodFill(holes, None, (0, 0), newVal=1)
-          holes = np.where(holes == 0, 255, 0)
-          sample['lesion_mask'] = mask + holes.astype('uint8')
+            # Consider the cases with lesions inside lesions
+            holes = mask.astype('float32').copy()
+            cv2.floodFill(holes, None, (0, 0), newVal=1)
+            holes = np.where(holes == 0, 255, 0)
+            sample['lesion_mask'] = mask + holes.astype('uint8')
 
         # Apply transformations
         # Warning: normalization should be indicated as a Transformation
