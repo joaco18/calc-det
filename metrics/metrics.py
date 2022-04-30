@@ -1,14 +1,15 @@
 import cv2
 import numpy as np
 import math
+from scipy import spatial
+from general_utils.utils import get_center_bboxes
+from metrics.metrics_utils import evaluate_pairs_iou_appox, evaluate_pairs_iou_exact
 
 
 def circle_comparison(predicted_roi_circles, mask, return_counts=True):
     """Finds TP, FP and FN among predicted circles based on the true image mask.
-
     More precise circle comparison. Checks the intersection of each predicted circle
     with the true leision bbox and counts a TP if >=1 roi pixel is in the circle.
-
     Args:
         true_bboxes (np.ndarray): Array of shape (n_rois, 2) containing
             top_left and bottom_right bbox coordinates in tuples
@@ -17,7 +18,6 @@ def circle_comparison(predicted_roi_circles, mask, return_counts=True):
         mask (np.ndarray): Image mask containing indexes of rois
         return_counts (bool, optional): Whether to return counts of TP, FP, FN arrays
             or corresponding indexes. Defaults to True.
-
     Returns:
         If return_counts=True:
             (TP, FP, FN) (tuple[int]): number of TP, FP, FN
@@ -54,10 +54,8 @@ def circle_comparison(predicted_roi_circles, mask, return_counts=True):
 
 def quick_circle_comparison(predicted_roi_circles, mask, return_counts=True):
     """Finds TP, FP and FN among predicted circles based on the true image mask.
-
     Quick version that checks if a rectangular bbox around each circle in the image
     mask contains any roi indexes and counts a TP if >= 1 roi pixel is in that bbox.
-
     Args:
         true_bboxes (np.ndarray): Array of shape (n_rois, 2) containing
             top_left and bottom_right bbox coordinates in tuples
@@ -66,7 +64,6 @@ def quick_circle_comparison(predicted_roi_circles, mask, return_counts=True):
         mask (np.ndarray): Image mask containing indexes of rois
         return_counts (bool, optional): Whether to return counts of TP, FP, FN arrays
             or corresponding indexes. Defaults to True.
-
     Returns:
         If return_counts=True:
             (TP, FP, FN) (tuple[int]): number of TP, FP, FN
@@ -90,7 +87,8 @@ def quick_circle_comparison(predicted_roi_circles, mask, return_counts=True):
 
         # looks at pixels in the mask at the circle's bbox
         intersected_mask_idxs = set(
-            mask[cricle_tl[1]:circle_br[1], cricle_tl[0]:circle_br[0]].ravel()).difference(back_set)
+            mask[cricle_tl[1]:circle_br[1], cricle_tl[0]:circle_br[0]].ravel()
+        ).difference(back_set)
         if len(intersected_mask_idxs) > 0:
             TP = TP.union(intersected_mask_idxs)
         else:
@@ -105,26 +103,89 @@ def quick_circle_comparison(predicted_roi_circles, mask, return_counts=True):
         return TP, FP, FN
 
 
-def create_binary_mask_from_blobs(
-    original_img_shape: tuple, blobs_x_y_sigma: np.ndarray, n_jobs: int=4
+def get_tp_fp_fn(
+    lesion_bboxes: np.ndarray, radiouses: np.ndarray, detections: np.ndarray,
+    min_dist: int, min_iou: float = None, exact: bool = False,
+    lesion_mask: np.ndarray = None
 ):
-    blobs_x_y_sigma = blobs_x_y_sigma.astype('int')
-    sigmas = np.unique(blobs_x_y_sigma[:, 2])
-    # all_detections_mask = np.zeros(original_img_shape)
-    all_detections_mask = []
-    for sigma in sigmas:
-        mask = np.zeros(original_img_shape)
-        coords = blobs_x_y_sigma[np.where(blobs_x_y_sigma[:, 2] == sigma)]
-        mask[coords[:, 0], coords[:, 1]] = 1
+    """Gets the true positives, flase positives, false negatives, values from
+        ground truth actually correctly predicted and the false positives matching
+        the distance condition but not the area one.
 
-        radius = int(math.sqrt(2)*sigma)
-        kernel_size = 2*radius
-        if kernel_size % 2 != 1:
-            kernel_size += 1
-        template_circle = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, ksize=(kernel_size, kernel_size))
-        mask = cv2.dilate(mask, template_circle)
-        all_detections_mask = mask & all_detections_mask
-    return all_detections_mask
+    Args:
+        lesion_bboxes (np.ndarray): grund truth lesion bboxes array as
+            coming out from INBreastDataset item
+        radiouses (np.ndarray): grund truth lesion radiuses array as
+            coming out from INBreastDataset item
+        detections (np.ndarray): detections given by (x,y,sigma)
+        min_dist (int): minimun distance criterium between the centers of
+            candidate lesion and ground truth
+        min_iou (float): minimun intersection over union criterium
+            between the centers of candidate lesion and ground truth
+        exact (bool): If True, the true shape of the lesion is used
+            else the circular approzimation is used
+        lesion_mask (np.ndarray): if the exact method is used the lesion mask needs
+            to be used
+    Returns:
+        tp (np.ndarray): [(x,y,sigma)]
+        fp (np.ndarray): [(x,y,sigma)]
+        fn (np.ndarray): [(x,y,radius)]
+        gt_predicted (np.ndarray): ground truth lesion actually detected
+            [(x,y,radius)]
+        close_fp (np.ndarray): false positives that match distance criteria
+            but not iou (only if iou value is indicated)
+    """
+    if exact:
+        assert (lesion_mask is not None), 'Exact method requires the mask of lesions'
+
+    # Get ground truth approximate circles
+    radiouses = np.expand_dims(radiouses.astype(int), 1)
+    gt_centers = get_center_bboxes(lesion_bboxes)
+    gt_circles = np.concatenate([gt_centers, radiouses], axis=1)
+
+    # Get the distance tree
+    datapoints = np.concatenate([gt_circles, detections])
+    tree = spatial.cKDTree(datapoints)
+
+    # Get the indexes among all points of ground truth points
+    gt_idxs = np.arange(len(gt_circles))
+
+    # Get the pairs closer than the required distance
+    pairs = tree.query_pairs(min_dist)
+
+    # Get the pairs matching the intersection over union condition
+    min_iou = 1 if min_iou is None else min_iou
+    if exact:
+        tp_idx, fp_idx, detected_gts = evaluate_pairs_iou_exact(
+            pairs, gt_idxs, datapoints, min_iou, lesion_mask, lesion_bboxes
+        )
+    else:
+        tp_idx, fp_idx, detected_gts = evaluate_pairs_iou_appox(
+            pairs, gt_idxs, datapoints, min_iou
+        )
+
+    # Get TP, FP, FN and missed sets of points
+    detected_gts = list(set(detected_gts))
+    missed_idx = [idx for idx in gt_idxs if idx not in detected_gts]
+    tp = datapoints[tp_idx, :]
+    close_fp = datapoints[fp_idx, :]
+    fn = datapoints[missed_idx, :]
+    gt_predicted = datapoints[list(detected_gts), :]
+    fp_idx = np.full(len(datapoints), True)
+    fp_idx[tp_idx] = False
+    fp = datapoints[fp_idx, :]
+
+    return tp, fp, fn, gt_predicted, close_fp
+
+
+def create_binary_mask_from_blobs(shape: tuple, blobs_x_y_sigma: list):
+    img_binary_blobs = np.zeros(shape)
+    for blob in blobs_x_y_sigma:
+        img_binary_blobs = cv2.circle(
+            img_binary_blobs, (blob[1], blob[0]),
+            int(math.sqrt(2) * blob[2]), 255, -1
+        )
+    return img_binary_blobs
 
 
 def cal_det_se(no_tp, no_fn):
