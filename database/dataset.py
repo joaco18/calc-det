@@ -7,7 +7,7 @@ import cv2
 import logging
 import pprint
 import random
-import utils
+import general_utils.utils as utils
 
 from functools import partial
 import multiprocessing as mp
@@ -158,6 +158,16 @@ class INBreast_Dataset(Dataset):
         self.check_paths_exist()
         self.rois_df = pd.read_csv(self.rois_df_path, nrows=nrows, index_col=0)
         self.img_df = pd.read_csv(self.img_df_path, nrows=nrows, index_col=0)
+
+        # Filter out the anomalies
+        with open(str(thispath.parent.parent / 'data/abnormal_images.txt'), 'r') as f:
+            abnormal_images_ids = [int(img_id.strip()) for img_id in f.readlines()]
+
+        rois2drop = self.rois_df.index[self.rois_df.img_id.isin(abnormal_images_ids)]
+        self.rois_df.drop(index=rois2drop)
+
+        imgs2drop = self.img_df.index[self.img_df.img_id.isin(abnormal_images_ids)]
+        self.img_df.drop(index=imgs2drop)
 
         # Filter dataset based on different criteria
         self.rois_df = self.rois_df.loc[self.rois_df.stored]
@@ -618,8 +628,10 @@ class INBreast_Dataset(Dataset):
                 utils.load_coords(bbox) if isinstance(bbox, str)
                 else bbox for bbox in bboxes_coords
             ]
+            sample['radiuses'] = self.rois_df.loc[rois_from_img, 'radius'].values
         else:
             sample["patch_bbox"] = [self.df['patch_bbox'].iloc[idx]]
+            sample["radius"] = [self.df['radius'].iloc[idx]]
 
         # Load lesion mask
         if self.lesions_mask:
@@ -641,11 +653,11 @@ class INBreast_Dataset(Dataset):
                 else:
                     mask = np.zeros(img.shape)
 
-          # Consider the cases with lesions inside lesions
-          holes = mask.astype('float32').copy()
-          cv2.floodFill(holes, None, (0, 0), newVal=1)
-          holes = np.where(holes == 0, 255, 0)
-          sample['lesion_mask'] = mask + holes.astype('uint8')
+            # Consider the cases with lesions inside lesions
+            holes = mask.astype('float32').copy()
+            cv2.floodFill(holes, None, (0, 0), newVal=1)
+            holes = np.where(holes == 0, 255, 0)
+            sample['lesion_mask'] = mask + holes.astype('uint8')
 
         # Apply transformations
         # Warning: normalization should be indicated as a Transformation

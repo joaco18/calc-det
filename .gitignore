@@ -8,6 +8,10 @@ database/Untitled.ipynb
 stolen
 stolen/
 notebooks/data_parsing_dev.ipynb
+models/HDoGDetector/temp_main.py
+models/general_utils/
+data/Bria/
+data/data_for_bria2014.csv
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
