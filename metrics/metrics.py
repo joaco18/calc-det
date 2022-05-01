@@ -101,7 +101,7 @@ def quick_circle_comparison(predicted_roi_circles, mask, return_counts=True):
 
 def get_tp_fp_fn(
     lesion_bboxes: np.ndarray, radiuses: np.ndarray, detections: np.ndarray,
-    min_dist: int, min_iou: float = None, exact: bool = False,
+    max_dist: int, min_iou: float = None, exact: bool = False,
     lesion_mask: np.ndarray = None
 ):
     """Gets the true positives, false positives, false negatives, values from
@@ -114,8 +114,8 @@ def get_tp_fp_fn(
         radiuses (np.ndarray): ground truth lesion radiuses array as
             coming out from INBreastDataset item
         detections (np.ndarray): detections given by (x,y,sigma)
-        min_dist (int): minimun distance criterium between the centers of
-            candidate lesion and ground truth
+        max_dist (int): max distance criterium between the centers of
+            candidate lesion and ground truth to be mapped
         min_iou (float): minimun intersection over union criterion
             between the centers of candidate lesion and ground truth
         exact (bool): If True, the true shape of the lesion is used
@@ -146,8 +146,8 @@ def get_tp_fp_fn(
     # Get the indexes among all points of ground truth points
     gt_idxs = np.arange(len(gt_circles))
 
-    # Get the pairs closer than the required distance
-    pairs = tree.query_pairs(min_dist)
+    # Find all pairs of points whose distance is at most max_dist
+    pairs = tree.query_pairs(max_dist)
 
     # Get the pairs matching the intersection over union condition
     min_iou = 1 if min_iou is None else min_iou
