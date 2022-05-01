@@ -37,6 +37,14 @@ def compute_disk_overlap(d: float, r1: float, r2: float, iou: bool = False):
         (float): Fraction of area of the overlap between the two disks.
             Or intersection over union if indicated
     """
+    if d == 0:
+        if iou:
+            a1 = (math.pi * (r1) ** 2)
+            a2 = (math.pi * (r2) ** 2)
+            a_min = np.minimum(a1, a2)
+            return a_min / a1 + a2 - a_min
+        else:
+            return 1.
     ratio1 = (d ** 2 + r1 ** 2 - r2 ** 2) / (2 * d * r1)
     ratio1 = clip(ratio1)
     acos1 = math.acos(ratio1)
@@ -52,6 +60,8 @@ def compute_disk_overlap(d: float, r1: float, r2: float, iou: bool = False):
     area = (r1 ** 2 * acos1 + r2 ** 2 * acos2 -
             0.5 * math.sqrt(abs(a * b * c * d)))
     if iou:
+        if ((math.pi * (r1) ** 2) + (math.pi * (r2) ** 2) - area) == 0:
+            print((math.pi * (r1) ** 2), (math.pi * (r2) ** 2), area)
         return area / ((math.pi * (r1) ** 2) + (math.pi * (r2) ** 2) - area)
 
     return area / (math.pi * (min(r1, r2) ** 2))
@@ -161,6 +171,8 @@ def evaluate_pairs_iou_appox(
 
         # Don't check overlaping
         if min_iou >= 1:
+            fp_idx.append(det_idx)
+        elif min_iou == 0:
             tp_idx.append(det_idx)
             detected_gts.append(gt_idx)
         # Check overlaping
@@ -170,10 +182,10 @@ def evaluate_pairs_iou_appox(
                 fp_idx.append(det_idx)
             # Overlapping
             else:
-                # Dot mc inside det
-                if r1 == 0:
-                    detected_gts.append(gt_idx)
+                # Dot mc/det inside det/mc
+                if (r1 == 0) or (r2 == 0):
                     tp_idx.append(det_idx)
+                    detected_gts.append(gt_idx)
                 # Overlapping greater than threshold
                 elif compute_disk_overlap(d, r1, r2, True) > min_iou:
                     detected_gts.append(gt_idx)
@@ -212,8 +224,11 @@ def evaluate_pairs_iou_exact(
             detected_gts.append(gt_idx)
         # Check overlaping
         else:
+            if (d == 0) and (r1 == 0) and (r2 == 0):
+                tp_idx.append(det_idx)
+                detected_gts.append(gt_idx)
             # No overlapping
-            if d > r1 + r2:
+            elif d > r1 + r2:
                 fp_idx.append(det_idx)
             # Overlapping
             else:
@@ -221,15 +236,16 @@ def evaluate_pairs_iou_exact(
                 if r1 == 0:
                     detected_gts.append(gt_idx)
                     tp_idx.append(det_idx)
-                iou = get_exact_iou(
-                    gt, gt_idx, det, img_shape, lesion_mask, lesion_bboxes
-                )
-                if iou > min_iou:
-                    detected_gts.append(gt_idx)
-                    tp_idx.append(det_idx)
-                    # Overlapping less than threshold
                 else:
-                    fp_idx.append(det_idx)
+                    iou = get_exact_iou(
+                        gt, gt_idx, det, img_shape, lesion_mask, lesion_bboxes
+                    )
+                    if iou > min_iou:
+                        detected_gts.append(gt_idx)
+                        tp_idx.append(det_idx)
+                        # Overlapping less than threshold
+                    else:
+                        fp_idx.append(det_idx)
     return tp_idx, fp_idx, detected_gts
 
 

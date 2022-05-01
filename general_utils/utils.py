@@ -79,7 +79,7 @@ def get_center_bbox(pt1, pt2):
         (tuple): (xc, yc)
     """
     xc = pt1[0] + (pt2[0] - pt1[0]) // 2
-    yc = pt2[0] + (pt2[1] - pt2[0]) // 2
+    yc = pt1[1] + (pt2[1] - pt1[1]) // 2
     return (xc, yc)
 
 
