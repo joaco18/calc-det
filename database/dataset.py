@@ -7,7 +7,7 @@ import cv2
 import logging
 import pprint
 import random
-import utils
+import general_utils.utils as utils
 
 from functools import partial
 import multiprocessing as mp
@@ -165,10 +165,10 @@ class INBreast_Dataset(Dataset):
 
         rois2drop = self.rois_df.index[self.rois_df.img_id.isin(abnormal_images_ids)]
         self.rois_df.drop(index=rois2drop)
-        
+
         imgs2drop = self.img_df.index[self.img_df.img_id.isin(abnormal_images_ids)]
         self.img_df.drop(index=imgs2drop)
-        
+
         # Filter dataset based on different criteria
         self.rois_df = self.rois_df.loc[self.rois_df.stored]
         self.rois_df.reset_index(drop=True, inplace=True)
@@ -628,8 +628,10 @@ class INBreast_Dataset(Dataset):
                 utils.load_coords(bbox) if isinstance(bbox, str)
                 else bbox for bbox in bboxes_coords
             ]
+            sample['radiuses'] = self.rois_df.loc[rois_from_img, 'radius'].values
         else:
             sample["patch_bbox"] = [self.df['patch_bbox'].iloc[idx]]
+            sample["radius"] = [self.df['radius'].iloc[idx]]
 
         # Load lesion mask
         if self.lesions_mask:
