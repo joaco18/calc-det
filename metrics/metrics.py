@@ -11,8 +11,6 @@ def circle_comparison(predicted_roi_circles, mask, return_counts=True):
     More precise circle comparison. Checks the intersection of each predicted circle
     with the true leision bbox and counts a TP if >=1 roi pixel is in the circle.
     Args:
-        true_bboxes (np.ndarray): Array of shape (n_rois, 2) containing
-            top_left and bottom_right bbox coordinates in tuples
         predicted_roi_circles (np.ndarray): Array of shape (n_predicted_circ, 3)
             with circle_x, circle_y and circle_radius values
         mask (np.ndarray): Image mask containing indexes of rois
@@ -57,8 +55,6 @@ def quick_circle_comparison(predicted_roi_circles, mask, return_counts=True):
     Quick version that checks if a rectangular bbox around each circle in the image
     mask contains any roi indexes and counts a TP if >= 1 roi pixel is in that bbox.
     Args:
-        true_bboxes (np.ndarray): Array of shape (n_rois, 2) containing
-            top_left and bottom_right bbox coordinates in tuples
         predicted_roi_circles (np.ndarray): Array of shape (n_predicted_circ, 3)
             with circle_x, circle_y and circle_radius values
         mask (np.ndarray): Image mask containing indexes of rois
@@ -104,26 +100,26 @@ def quick_circle_comparison(predicted_roi_circles, mask, return_counts=True):
 
 
 def get_tp_fp_fn(
-    lesion_bboxes: np.ndarray, radiouses: np.ndarray, detections: np.ndarray,
+    lesion_bboxes: np.ndarray, radiuses: np.ndarray, detections: np.ndarray,
     min_dist: int, min_iou: float = None, exact: bool = False,
     lesion_mask: np.ndarray = None
 ):
-    """Gets the true positives, flase positives, false negatives, values from
+    """Gets the true positives, false positives, false negatives, values from
         ground truth actually correctly predicted and the false positives matching
         the distance condition but not the area one.
 
     Args:
-        lesion_bboxes (np.ndarray): grund truth lesion bboxes array as
+        lesion_bboxes (np.ndarray): ground truth lesion bboxes array as
             coming out from INBreastDataset item
-        radiouses (np.ndarray): grund truth lesion radiuses array as
+        radiuses (np.ndarray): ground truth lesion radiuses array as
             coming out from INBreastDataset item
         detections (np.ndarray): detections given by (x,y,sigma)
         min_dist (int): minimun distance criterium between the centers of
             candidate lesion and ground truth
-        min_iou (float): minimun intersection over union criterium
+        min_iou (float): minimun intersection over union criterion
             between the centers of candidate lesion and ground truth
         exact (bool): If True, the true shape of the lesion is used
-            else the circular approzimation is used
+            else the circular approximation is used
         lesion_mask (np.ndarray): if the exact method is used the lesion mask needs
             to be used
     Returns:
@@ -139,9 +135,9 @@ def get_tp_fp_fn(
         assert (lesion_mask is not None), 'Exact method requires the mask of lesions'
 
     # Get ground truth approximate circles
-    radiouses = np.expand_dims(radiouses.astype(int), 1)
+    radiuses = np.expand_dims(radiuses.astype(int), 1)
     gt_centers = get_center_bboxes(lesion_bboxes)
-    gt_circles = np.concatenate([gt_centers, radiouses], axis=1)
+    gt_circles = np.concatenate([gt_centers, radiuses], axis=1)
 
     # Get the distance tree
     datapoints = np.concatenate([gt_circles, detections])
