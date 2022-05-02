@@ -7,7 +7,7 @@ import cv2
 import logging
 import pprint
 import random
-import utils
+import general_utils.utils as utils
 
 from functools import partial
 import multiprocessing as mp
@@ -74,7 +74,6 @@ class INBreast_Dataset(Dataset):
         nrows: int = None,
         seed: int = 0,
         return_lesions_mask: bool = False,
-        return_indexes_in_mask: bool = False,
         level: str = 'image',
         partitions: List[str] = ['train', 'test'],
         max_lesion_diam_mm: float = 1.0,
@@ -151,7 +150,6 @@ class INBreast_Dataset(Dataset):
         self.data_aug = data_aug
         self.lesions_mask = return_lesions_mask
         self.normalize = normalize
-        self.return_indexes_in_mask = return_indexes_in_mask
         self.lesion_types = lesion_types
         self.max_lesion_diam_px = int(max_lesion_diam_mm / 0.07)
         self.cropped_imgs = cropped_imgs
@@ -160,6 +158,16 @@ class INBreast_Dataset(Dataset):
         self.check_paths_exist()
         self.rois_df = pd.read_csv(self.rois_df_path, nrows=nrows, index_col=0)
         self.img_df = pd.read_csv(self.img_df_path, nrows=nrows, index_col=0)
+
+        # Filter out the anomalies
+        with open(str(thispath.parent.parent / 'data/abnormal_images.txt'), 'r') as f:
+            abnormal_images_ids = [int(img_id.strip()) for img_id in f.readlines()]
+
+        rois2drop = self.rois_df.index[self.rois_df.img_id.isin(abnormal_images_ids)]
+        self.rois_df.drop(index=rois2drop)
+
+        imgs2drop = self.img_df.index[self.img_df.img_id.isin(abnormal_images_ids)]
+        self.img_df.drop(index=imgs2drop)
 
         # Filter dataset based on different criteria
         self.rois_df = self.rois_df.loc[self.rois_df.stored]
@@ -620,8 +628,10 @@ class INBreast_Dataset(Dataset):
                 utils.load_coords(bbox) if isinstance(bbox, str)
                 else bbox for bbox in bboxes_coords
             ]
+            sample['radiuses'] = self.rois_df.loc[rois_from_img, 'radius'].values
         else:
             sample["patch_bbox"] = [self.df['patch_bbox'].iloc[idx]]
+            sample["radius"] = [self.df['radius'].iloc[idx]]
 
         # Load lesion mask
         if self.lesions_mask:
@@ -642,6 +652,7 @@ class INBreast_Dataset(Dataset):
                     mask = cv2.imread(str(mask_filename), cv2.IMREAD_ANYDEPTH)
                 else:
                     mask = np.zeros(img.shape)
+
             # Consider the cases with lesions inside lesions
             holes = mask.astype('float32').copy()
             cv2.floodFill(holes, None, (0, 0), newVal=1)
