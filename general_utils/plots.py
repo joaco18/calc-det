@@ -20,6 +20,49 @@ def simple_im_show2(img, mask, figsize=(10, 10)):
     ax[1].axis('off')
     plt.show()
 
+def plot_blobs(image: np.ndarray, image_blobs: np.ndarray):
+    """Overlay blob circles over the image.
+    Args:
+        image (np.ndarray): image to which overlay the blobs
+        image_blobs (np.ndarray): blobs to overlay over the image
+            each row is a candidate (x, y, radius)
+    """
+    f, ax = plt.subplots(1, 1, figsize=(20, 20))
+    ax.imshow(image, cmap='gray')
+    for blob in image_blobs:
+        x, y, r = blob
+        c = plt.Circle((x, y), r+25, color='red', linewidth=1, fill=False)
+        ax.add_patch(c)
+    plt.axis('off')
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_blobs2(image, blobs_a, blobs_b, ax=None):
+    """Overlay two sets of blob circles over the image.
+    Args:
+        image (np.ndarray): image to which overlay the blobs
+        tp_blobs (np.ndarray): blobs to overlay over the image in red
+            each row is a candidate (x, y, radius)
+        gt_blobs (np.ndarray): blobs to overlay over the image in green.
+            each row is a candidate (x, y, radius)
+    """
+    if ax is None:
+        f, ax = plt.subplots(1, 1, figsize=(20, 20))
+    ax.imshow(image, cmap='gray')
+    for blob in blobs_a:
+        x, y, r = blob
+        c = plt.Circle((x, y), r+10, color='red', linewidth=1, fill=False)
+        ax.add_patch(c)
+    for blob in blobs_b:
+        x, y, r = blob
+        c = plt.Circle((x, y), r+25, color='green', linewidth=3, fill=False)
+        ax.add_patch(c)
+    plt.axis('off')
+    plt.tight_layout()
+    if ax is None:
+        plt.show()
+
 
 def plot_bboxes_over_image(image, bboxes, colors, types, thickness=2, alpha=0.2):
     """Overimposes bboxes on the image. Can work with multiple groups and types of bboxes.
