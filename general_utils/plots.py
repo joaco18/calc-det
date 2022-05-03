@@ -20,6 +20,7 @@ def simple_im_show2(img, mask, figsize=(10, 10)):
     ax[1].axis('off')
     plt.show()
 
+
 def plot_blobs(image: np.ndarray, image_blobs: np.ndarray):
     """Overlay blob circles over the image.
     Args:
