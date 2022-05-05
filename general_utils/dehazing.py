@@ -32,7 +32,7 @@ def dehaze(image: np.ndarray, omega: float, window_size: int, radius=40, eps=1e-
 
     # substracting estimated dark channel that contains
     # 'haze' from the origianal image
-    recovered_image = 1 - (1 - image)/(1 - omega*darck_ch)
+    recovered_image = (1 - (1 - image)/(1 - omega*darck_ch)).astype(np.float32) #casting for guidedFilter to work fine
     filtered_image = cv2.ximgproc.guidedFilter(recovered_image, recovered_image,
                                                radius=radius, eps=eps)
     return filtered_image
