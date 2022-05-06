@@ -1,5 +1,9 @@
 import cv2
 import numpy as np
+import logging
+from numba import njit
+
+logging.basicConfig(level=logging.INFO)
 
 
 def load_point(point_string: str, dtype: str = 'float'):
@@ -91,3 +95,59 @@ def get_center_bboxes(bboxes: np.ndarray):
         (np.ndarray): array with centers as rows [(xc,yc)]
     """
     return np.asarray([get_center_bbox(bbox[0], bbox[1]) for bbox in bboxes])
+
+
+@njit(cache=True)
+def our_hist_numba(vector, bins):
+    freqs = np.zeros((bins-1,))
+    for i in range(len(vector)):
+        freqs[vector[i]] += 1
+    return np.arange(0, bins-1), freqs
+
+
+@njit(cache=True)
+def get_trianglular_threshold(histogram: np.ndarray):
+    # Get the left and rightmost nonzero values of the histogram
+    idxs = np.nonzero(histogram)[0]
+    minv = idxs.min()
+    maxv = idxs.max()
+
+    # Reduce min by one increase max by one to cactch the ends
+    minv = minv - 1 if minv > 0 else minv
+    minv2 = maxv + 1 if maxv < histogram.size else maxv
+
+    # Find whether the histogram is left or right skewed
+    maxv = np.argmax(histogram)
+    inverted = False
+    if (maxv - minv) < (minv2 - maxv):
+        inverted = True
+        histogram = np.flip(histogram)
+        minv = histogram.size - 1 - minv2
+        maxv = histogram.size - 1 - maxv
+
+    if minv == maxv:
+        return minv
+
+    nx = histogram[maxv]
+    ny = minv - maxv
+    d = np.sqrt(nx*nx + ny*ny)
+    nx /= d
+    ny /= d
+    d = nx * minv + ny * histogram[minv]
+
+    # find the split point
+    split = minv
+    split_distance = 0
+    for i in range(minv + 1, maxv + 1):
+        new_distance = nx * i + ny * histogram[i] - d
+        if new_distance > split_distance:
+            split = i
+            split_distance = new_distance
+    split -= 1
+
+    # reverse back the histogram
+    if inverted:
+        histogram = np.flip(histogram)
+        return histogram.size - 1 - split
+    else:
+        return split
