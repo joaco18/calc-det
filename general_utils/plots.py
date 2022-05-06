@@ -1,6 +1,9 @@
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
+import math
+
+from general_utils.utils import min_max_norm
 
 
 def simple_im_show(img, figsize=(10, 10)):
@@ -21,22 +24,29 @@ def simple_im_show2(img, mask, figsize=(10, 10)):
     plt.show()
 
 
-def plot_blobs(image: np.ndarray, image_blobs: np.ndarray):
+def plot_blobs(image: np.ndarray, image_blobs: np.ndarray, ax=None):
     """Overlay blob circles over the image.
     Args:
         image (np.ndarray): image to which overlay the blobs
         image_blobs (np.ndarray): blobs to overlay over the image
             each row is a candidate (x, y, radius)
     """
-    f, ax = plt.subplots(1, 1, figsize=(20, 20))
-    ax.imshow(image, cmap='gray')
+    if ax is None:
+        f, ax = plt.subplots(1, 1, figsize=(20, 20))
+    # image = min_max_norm(image, 255)
+    image = image.astype('uint8')
+    image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
     for blob in image_blobs:
         x, y, r = blob
-        c = plt.Circle((x, y), r+25, color='red', linewidth=1, fill=False)
-        ax.add_patch(c)
+        x, y = int(x), int(y)
+        image = cv2.circle(
+            image, (x, y), int(math.sqrt(2) * r)+10, (255, 0, 0), 2
+        )
+    ax.imshow(image)
     plt.axis('off')
     plt.tight_layout()
-    plt.show()
+    if ax is None:
+        plt.show()
 
 
 def plot_blobs2(image, blobs_a, blobs_b, ax=None):
@@ -50,15 +60,22 @@ def plot_blobs2(image, blobs_a, blobs_b, ax=None):
     """
     if ax is None:
         f, ax = plt.subplots(1, 1, figsize=(20, 20))
-    ax.imshow(image, cmap='gray')
+    # image = min_max_norm(image, 255)
+    image = image.astype('uint8')
+    image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
     for blob in blobs_a:
         x, y, r = blob
-        c = plt.Circle((x, y), r+10, color='red', linewidth=1, fill=False)
-        ax.add_patch(c)
+        x, y = int(x), int(y)
+        image = cv2.circle(
+            image, (x, y), int(math.sqrt(2) * r)+10, (255, 0, 0), 2
+        )
     for blob in blobs_b:
         x, y, r = blob
-        c = plt.Circle((x, y), r+25, color='green', linewidth=3, fill=False)
-        ax.add_patch(c)
+        x, y = int(x), int(y)
+        image = cv2.circle(
+            image, (x, y), int(math.sqrt(2) * r)+25, (0, 255, 0), 2
+        )
+    ax.imshow(image)
     plt.axis('off')
     plt.tight_layout()
     if ax is None:
