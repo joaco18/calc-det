@@ -2,26 +2,37 @@ import cv2
 import numpy as np
 from skimage.measure import label
 from pathlib import Path
+from scipy import spatial
+from numba import njit
 
 
-class MorphologyDetection:
+@njit
+def filter_by_distance(centers, pairs):
+    for i, j in pairs:
+        if (centers[i, -1] == 0) or (centers[j, -1] == 0):
+            continue
+        if centers[i, -1] > centers[j, -1]:
+            centers[j, -1] = 0
+        else:
+            centers[i, -1] = 0
+    indxs = np.where(centers[:, -1] != 0)[0]
+    return indxs
+
+
+class MorphologyCalcificationDetection:
     def __init__(
-        self, rbd_img_path: str, threshold: float, alternative: bool = False,
+        self, rbd_img_path: str, threshold: float, min_distance: int, area: int,
         store_intermediate: bool = True
     ):
-        self.use_alternative = alternative
         self.rbd_img_path = Path(rbd_img_path)
         self.threshold = threshold
         self.store_intermediate = store_intermediate
-        if self.use_alternative:
-            self.dilation_k_size = 14
-        else:
-            self.dilation_k_size = 20
+        self.min_distance = min_distance
+        self.area = area
+        self.dilation_k_size = 14
 
-    def detect(self, image: np.ndarray, image_id: int, ):
-
+    def detect(self, image: np.ndarray, image_id: int):
         self.image = image
-
         # load or create reconstructed by dialation image
         rbd_image = None
         if (self.rbd_img_path/f'{image_id}.tiff').exists():
@@ -36,6 +47,7 @@ class MorphologyDetection:
 
         # erode breast boundary to avoid FP there
         rbd_image_no_bbound = self.breast_boundary_erosion(rbd_image)
+        self.output = rbd_image_no_bbound
 
         # intensity thresholding
         trheshold = np.quantile(
@@ -43,18 +55,14 @@ class MorphologyDetection:
         thr1_rbd = rbd_image_no_bbound.copy()
         thr1_rbd[thr1_rbd <= trheshold] = 0
 
-        if self.use_alternative:
-            quant = 0.8
-            trheshold = np.quantile(rbd_image_no_bbound[thr1_rbd > 0].ravel(), q=quant)
-            thr_rbd = rbd_image_no_bbound.copy()
-            thr_rbd[thr_rbd <= trheshold] = 0
-        else:
-            thr_rbd = thr1_rbd
+        trheshold = np.quantile(rbd_image_no_bbound[thr1_rbd > 0].ravel(), q=0.8)
+        thr_rbd = rbd_image_no_bbound.copy()
+        thr_rbd[thr_rbd <= trheshold] = 0
 
         # connected components extraction and filtering
-        markers = self.connected_components_extraction(thr1_rbd)
-        cc_mask = self.connected_components_filtering(markers)
-        return cc_mask
+        markers = self.connected_components_extraction(thr_rbd)
+        candidate_blobs = self.connected_components_filtering(markers)
+        return candidate_blobs
 
     def reconstruction_by_dialation(
         self, mask: np.ndarray, rect_size: int = 3, circle_size: int = 20
@@ -96,55 +104,44 @@ class MorphologyDetection:
     def connected_components_extraction(self, thr1_rbd: np.ndarray):
         """Finds connected components"""
         # binarize and perform connected components labeling
-        thr1_rbd_bin = self.to_uint8(255*(thr1_rbd > 0))
-        markers, _ = label(thr1_rbd_bin, background=0,
-                           return_num=True, connectivity=1)
+        thr1_rbd_bin = np.where(thr1_rbd > 0, 255, 0).astype('uint8')
+        markers, _ = label(thr1_rbd_bin, background=0, return_num=True, connectivity=1)
         return markers
 
     def connected_components_filtering(self, markers: np.ndarray):
         """Filter connected components"""
         # connected components filtering
-        selected_cc = []
         candidate_blobs = []
-        out = np.zeros_like(markers, dtype='uint16')
-        if self.use_alternative:
-            contours, _ = cv2.findContours(np.where(markers > 0, 255, 0).astype('uint8'),
-                                           cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-            for i, obj in enumerate(contours):
-                A = cv2.contourArea(obj)
-                A = 1 if A == 0 else A
-                if A > 14 * 14:
-                    continue
-                p = cv2.arcLength(obj, True)
-                p = 1 if p == 0 else p
-                c = (4 * np.pi * A) / (p * p)
-                if c > 0.6:
-                    selected_cc.append(obj)
-                    center, r = cv2.minEnclosingCircle(obj)
-                    candidate_blobs.append((center[0], center[1], r))
-                    # out = cv2.drawContours(out, contours, i, i+1, -1)
-            out = cv2.drawContours(out, selected_cc, -1, 255, -1)
-            # markers[~candidates_mask] = 0
-            return out, candidate_blobs
-        else:
-            contours, _ = cv2.findContours(
-                np.where(markers > 0, 255, 0).astype('uint8'),
-                cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE
-            )
-            for i, obj in enumerate(contours):
-                A = cv2.contourArea(obj)
-                if 14*14 > A >= 0:
-                    selected_cc.append(obj)
-                    center, r = cv2.minEnclosingCircle(obj)
-                    candidate_blobs.append((center[0], center[1], r))
-                    # out = cv2.drawContours(out, contours, i, i+1, -1)
-            out = cv2.drawContours(out, selected_cc, -1, 255, -1)
-            # markers[out == 0] = 0
-            return out, candidate_blobs
+        centers = []
+        # out = np.zeros_like(markers, dtype='uint16')
 
-    @staticmethod
-    def min_max_norm(img):
-        return (img - img.min())/(img.max() - img.min())
+        contours, _ = cv2.findContours(
+            np.where(markers > 0, 255, 0).astype('uint8'), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        # filter by area
+        contours = list(contours)
+        for i, obj in enumerate(contours):
+            center, r = cv2.minEnclosingCircle(obj)
+            A = cv2.contourArea(obj)
+            A = 1 if A == 0 else A
+            if A > self.area:
+                centers.append([0, 0, 0])
+            else:
+                candidate_blobs.append((center[0], center[1], r))
+                centers.append((center[0], center[1], r))
+        centers = np.asarray(centers)
+        candidate_blobs = np.asarray(candidate_blobs)
+        indxs = np.where(centers[:, -1] != 0)[0]
+        contours = [contours[i] for i in range(len(contours)) if i not in indxs]
 
-    def to_uint8(self, img):
-        return (255*self.min_max_norm(img)).astype(np.uint8)
+        # filter by distance
+        if self.min_distance != 0:
+            centers = centers[indxs, :]
+            tree = spatial.cKDTree(centers[:, :-1])
+            pairs = np.array(list(tree.query_pairs(self.min_distance)))
+            indxs = filter_by_distance(centers, pairs)
+            if len(indxs) == 0:
+                return None
+            contours = [contours[i] for i in range(len(contours)) if i not in indxs]
+            candidate_blobs = candidate_blobs[indxs, :]
+        # out = cv2.drawContours(out, contours, -1, 255, -1)
+        return candidate_blobs
