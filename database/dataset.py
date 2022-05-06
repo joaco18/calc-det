@@ -19,7 +19,6 @@ from roi_extraction import slice_image, padd_image, view_as_windows
 # from torchvision import transforms
 from typing import List, Tuple
 from tqdm import tqdm
-from sklearn.model_selection import train_test_split
 
 thispath = Path(__file__).resolve()
 datapath = thispath.parent.parent / "data" / "INbreast Release 1.0"
