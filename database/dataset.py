@@ -75,7 +75,7 @@ class INBreast_Dataset(Dataset):
         seed: int = 0,
         return_lesions_mask: bool = False,
         level: str = 'image',
-        partitions: List[str] = ['train', 'test'],
+        partitions: List[str] = ['train', 'validation', 'test'],
         max_lesion_diam_mm: float = 1.0,
         extract_patches: bool = True,
         extract_patches_method: str = 'all',  # 'centered'
@@ -109,8 +109,8 @@ class INBreast_Dataset(Dataset):
                 example or not. Defaults to False.
             level (str, optional): Whether to generate a dataset at 'rois' or 'image' level.
                 Defaults to 'image'.
-            partitions (List[str]): Select predefined sets, subset from ['train', 'test'].
-                Defaults to ['train', 'test']
+            partitions (List[str]): Select predefined sets, subset from ['train', 'validation', 'test'].
+                Defaults to ['train', 'validation', 'test']
             max_lesion_diam_mm (float): Maximum horizontal or vertical diameter allowed for the
                 lesion.
             extract_patches (bool, optional): Whether to extract the rois or not. Defaults to True.
@@ -159,17 +159,11 @@ class INBreast_Dataset(Dataset):
         self.rois_df = pd.read_csv(self.rois_df_path, nrows=nrows, index_col=0)
         self.img_df = pd.read_csv(self.img_df_path, nrows=nrows, index_col=0)
 
-        # Filter out the anomalies
-        with open(str(thispath.parent.parent / 'data/abnormal_images.txt'), 'r') as f:
-            abnormal_images_ids = [int(img_id.strip()) for img_id in f.readlines()]
-
-        rois2drop = self.rois_df.index[self.rois_df.img_id.isin(abnormal_images_ids)]
-        self.rois_df.drop(index=rois2drop)
-
-        imgs2drop = self.img_df.index[self.img_df.img_id.isin(abnormal_images_ids)]
-        self.img_df.drop(index=imgs2drop)
+        # Add validation partition
+        self.generate_validation_partition()
 
         # Filter dataset based on different criteria
+        self.filter_excluded_cases()
         self.rois_df = self.rois_df.loc[self.rois_df.stored]
         self.rois_df.reset_index(drop=True, inplace=True)
         self.filter_by_partition()
@@ -178,6 +172,7 @@ class INBreast_Dataset(Dataset):
         self.filter_by_lesion_type()
         self.add_image_label_to_image_df()
         self.flip_coordinates()
+
         # Get rois df
         if level == 'rois':
             if extract_patches:
@@ -230,6 +225,30 @@ class INBreast_Dataset(Dataset):
         self.rois_df.reset_index(inplace=True, drop=True)
         self.img_df.reset_index(inplace=True, drop=True)
 
+    def filter_excluded_cases(self):
+        # Filter out cases with offset in labels
+        with open(str(thispath.parent.parent / 'data/abnormal_images.txt'), 'r') as f:
+            abnormal_images_ids = [int(img_id.strip()) for img_id in f.readlines()]
+
+        rois2drop = self.rois_df.index[self.rois_df.img_id.isin(abnormal_images_ids)]
+        self.rois_df.drop(index=rois2drop)
+        self.rois_df.reset_index(inplace=True, drop=True)
+
+        imgs2drop = self.img_df.index[self.img_df.img_id.isin(abnormal_images_ids)]
+        self.img_df.drop(index=imgs2drop)
+        self.img_df.reset_index(inplace=True, drop=True)
+
+    def generate_validation_partition(self):
+        """Add validation partition"""
+        train_cases = self.rois_df.loc[self.rois_df.partition == 'train', 'case_id'].unique()
+        val_size = int(len(train_cases) * 0.3)
+        val_selection = np.random.choice(train_cases, size=val_size, replace=False)
+
+        # Add partition to rois df
+        self.rois_df.loc[self.rois_df.case_id.isin(val_selection), 'partition'] = 'validation'
+        # filter imgs df
+        self.img_df.loc[self.img_df.case_id.isin(val_selection), 'partition'] = 'validation'
+
     def filter_by_partition(self):
         """
         This method is called to filter the images according to the predefined partitions
@@ -248,11 +267,7 @@ class INBreast_Dataset(Dataset):
         of the circle enclosing the lesion.
         """
         # filter rois df
-        # try:
-        #     print(self.rois_df.radius.unique())
         self.rois_df = self.rois_df.loc[2 * self.rois_df.radius <= self.max_lesion_diam_px, :]
-        # except e:
-        #    print(self.rois_df.radius.unique())
         self.rois_df.reset_index(inplace=True, drop=True)
 
     def filter_by_lesion_type(self):
@@ -615,6 +630,7 @@ class INBreast_Dataset(Dataset):
         # Convert all images in left oriented ones
         side = self.df['side'].iloc[idx]
         img_id = self.df['img_id'].iloc[idx]
+        sample['img_id'] = img_id
         if side == 'R' and self.level == 'image':
             img = cv2.flip(img, 1)
         sample['img'] = img
