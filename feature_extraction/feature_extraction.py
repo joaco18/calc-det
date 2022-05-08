@@ -7,7 +7,7 @@ from general_utils.utils import crop_center_coords, min_max_norm
 from pywt import dwt2
 from radiomics import featureextractor
 from scipy.stats import kurtosis, skew
-from skimage.feature import graycomatrix, graycoprops
+from skimage.feature import greycomatrix, greycoprops
 from tqdm import tqdm
 
 # machine epsillon used to avoid zero errors
@@ -289,12 +289,12 @@ class CandidatesFeatureExtraction:
         skimage_glcm_features = ['energy', 'correlation',
                                  'homogeneity', 'contrast', 'dissimilarity']  # 'ASM'
 
-        single_decomp_glcm = graycomatrix(min_max_norm(
+        single_decomp_glcm = greycomatrix(min_max_norm(
             single_decomp, max_val=256).astype(np.uint8), [2], [0], normed=True)
 
         glcm_features_1 = {}
         for feature_name in skimage_glcm_features:
-            feature_results = graycoprops(
+            feature_results = greycomatrix(
                 single_decomp_glcm, prop=feature_name)
             for fv in feature_results.ravel():
                 glcm_features_1[f'patch_glcm_{feature_name}_{decomp_names[idx]}'] = fv
