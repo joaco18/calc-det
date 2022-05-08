@@ -7,7 +7,7 @@ import cv2
 import logging
 import pprint
 import random
-import utils
+import general_utils.utils as utils
 
 from functools import partial
 import multiprocessing as mp
@@ -74,9 +74,8 @@ class INBreast_Dataset(Dataset):
         nrows: int = None,
         seed: int = 0,
         return_lesions_mask: bool = False,
-        return_indexes_in_mask: bool = False,
         level: str = 'image',
-        partitions: List[str] = ['train', 'test'],
+        partitions: List[str] = ['train', 'validation', 'test'],
         max_lesion_diam_mm: float = 1.0,
         extract_patches: bool = True,
         extract_patches_method: str = 'all',  # 'centered'
@@ -110,8 +109,8 @@ class INBreast_Dataset(Dataset):
                 example or not. Defaults to False.
             level (str, optional): Whether to generate a dataset at 'rois' or 'image' level.
                 Defaults to 'image'.
-            partitions (List[str]): Select predefined sets, subset from ['train', 'test'].
-                Defaults to ['train', 'test']
+            partitions (List[str]): Select predefined sets, subset from ['train', 'validation', 'test'].
+                Defaults to ['train', 'validation', 'test']
             max_lesion_diam_mm (float): Maximum horizontal or vertical diameter allowed for the
                 lesion.
             extract_patches (bool, optional): Whether to extract the rois or not. Defaults to True.
@@ -151,7 +150,6 @@ class INBreast_Dataset(Dataset):
         self.data_aug = data_aug
         self.lesions_mask = return_lesions_mask
         self.normalize = normalize
-        self.return_indexes_in_mask = return_indexes_in_mask
         self.lesion_types = lesion_types
         self.max_lesion_diam_px = int(max_lesion_diam_mm / 0.07)
         self.cropped_imgs = cropped_imgs
@@ -161,7 +159,11 @@ class INBreast_Dataset(Dataset):
         self.rois_df = pd.read_csv(self.rois_df_path, nrows=nrows, index_col=0)
         self.img_df = pd.read_csv(self.img_df_path, nrows=nrows, index_col=0)
 
+        # Add validation partition
+        self.generate_validation_partition()
+
         # Filter dataset based on different criteria
+        self.filter_excluded_cases()
         self.rois_df = self.rois_df.loc[self.rois_df.stored]
         self.rois_df.reset_index(drop=True, inplace=True)
         self.filter_by_partition()
@@ -170,6 +172,7 @@ class INBreast_Dataset(Dataset):
         self.filter_by_lesion_type()
         self.add_image_label_to_image_df()
         self.flip_coordinates()
+
         # Get rois df
         if level == 'rois':
             if extract_patches:
@@ -222,6 +225,30 @@ class INBreast_Dataset(Dataset):
         self.rois_df.reset_index(inplace=True, drop=True)
         self.img_df.reset_index(inplace=True, drop=True)
 
+    def filter_excluded_cases(self):
+        # Filter out cases with offset in labels
+        with open(str(thispath.parent.parent / 'data/abnormal_images.txt'), 'r') as f:
+            abnormal_images_ids = [int(img_id.strip()) for img_id in f.readlines()]
+
+        rois2drop = self.rois_df.index[self.rois_df.img_id.isin(abnormal_images_ids)]
+        self.rois_df.drop(index=rois2drop)
+        self.rois_df.reset_index(inplace=True, drop=True)
+
+        imgs2drop = self.img_df.index[self.img_df.img_id.isin(abnormal_images_ids)]
+        self.img_df.drop(index=imgs2drop)
+        self.img_df.reset_index(inplace=True, drop=True)
+
+    def generate_validation_partition(self):
+        """Add validation partition"""
+        train_cases = self.rois_df.loc[self.rois_df.partition == 'train', 'case_id'].unique()
+        val_size = int(len(train_cases) * 0.3)
+        val_selection = np.random.choice(train_cases, size=val_size, replace=False)
+
+        # Add partition to rois df
+        self.rois_df.loc[self.rois_df.case_id.isin(val_selection), 'partition'] = 'validation'
+        # filter imgs df
+        self.img_df.loc[self.img_df.case_id.isin(val_selection), 'partition'] = 'validation'
+
     def filter_by_partition(self):
         """
         This method is called to filter the images according to the predefined partitions
@@ -240,11 +267,7 @@ class INBreast_Dataset(Dataset):
         of the circle enclosing the lesion.
         """
         # filter rois df
-        # try:
-        #     print(self.rois_df.radius.unique())
         self.rois_df = self.rois_df.loc[2 * self.rois_df.radius <= self.max_lesion_diam_px, :]
-        # except e:
-        #    print(self.rois_df.radius.unique())
         self.rois_df.reset_index(inplace=True, drop=True)
 
     def filter_by_lesion_type(self):
@@ -612,6 +635,7 @@ class INBreast_Dataset(Dataset):
         # Convert all images in left oriented ones
         side = self.df['side'].iloc[idx]
         img_id = self.df['img_id'].iloc[idx]
+        sample['img_id'] = img_id
         if side == 'R' and self.level == 'image':
             img = cv2.flip(img, 1)
         sample['img'] = img
@@ -625,8 +649,10 @@ class INBreast_Dataset(Dataset):
                 utils.load_coords(bbox) if isinstance(bbox, str)
                 else bbox for bbox in bboxes_coords
             ]
+            sample['radiuses'] = self.rois_df.loc[rois_from_img, 'radius'].values
         else:
             sample["patch_bbox"] = [self.df['patch_bbox'].iloc[idx]]
+            sample["radius"] = [self.df['radius'].iloc[idx]]
 
         # Load lesion mask
         if self.lesions_mask:
@@ -647,6 +673,7 @@ class INBreast_Dataset(Dataset):
                     mask = cv2.imread(str(mask_filename), cv2.IMREAD_ANYDEPTH)
                 else:
                     mask = np.zeros(img.shape)
+
             # Consider the cases with lesions inside lesions
             holes = mask.astype('float32').copy()
             cv2.floodFill(holes, None, (0, 0), newVal=1)
@@ -743,10 +770,12 @@ class INBreast_Dataset(Dataset):
                 lesion_bbox_crop = [
                     (bbox_shape[0] - point[0], point[1]) for point in lesion_bbox_crop
                 ]
-                lesion_bboxs_crop[k] = [
-                    (lesion_bbox_crop[1][0], lesion_bbox_crop[0][1]),
-                    (lesion_bbox_crop[0][0], lesion_bbox_crop[1][1]),
-                ]
+                side = self.img_df.loc[self.img_df.img_id == img_id, 'side'].values[0]
+                if side == 'R':
+                    lesion_bboxs_crop[k] = [
+                        (lesion_bbox_crop[1][0], lesion_bbox_crop[0][1]),
+                        (lesion_bbox_crop[0][0], lesion_bbox_crop[1][1]),
+                    ]
 
             point_pxs_crop = self.rois_df.loc[self.rois_df.img_id == img_id, poit_tag].values
             for k, point_px_crop in enumerate(point_pxs_crop):

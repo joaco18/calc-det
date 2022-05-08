@@ -3,11 +3,17 @@ models/bria2014/feature_extraction_cv_adapt.py
 data/Bria/features
 data/train_img_filename.pkl
 data/INbreast Release 1.0
+data/hough_img
+data/recounstructed_by_dialation_img
 database/preparing_data.py
 database/Untitled.ipynb
 stolen
 stolen/
 notebooks/data_parsing_dev.ipynb
+models/HDoGDetector/temp_main.py
+models/general_utils/
+data/Bria/
+data/data_for_bria2014.csv
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -141,3 +147,6 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# extrashit
+images/
