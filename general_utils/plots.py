@@ -56,3 +56,21 @@ def plot_bboxes_over_image(image, bboxes, colors, types, thickness=2, alpha=0.2)
         beta = 1 - alpha
         img_bgr = cv2.addWeighted(img_bgr, beta, bbox_mask, alpha, 0.0)
     return img_bgr
+
+def plot_gabor_filters(filters, plots_columns=3):
+    """Plots Gabor filter
+
+    Args:
+        filters (list[np.ndarray]): List of Gabot filters to plot
+        plots_columns (int, optional): Number of columns in the subplots image.
+            Rows are scaled automatically . Defaults to 3.
+    """
+    plots_rows = int(np.ceil(len(filters)/plots_columns))
+    fig, axs = plt.subplots(plots_rows, plots_columns, tight_layout=True, figsize=(10,10),)
+    # fig.set_constrained_layout_pads(w_pad=0, h_pad=10, hspace=0, wspace=0)
+    for ax_idx, (r,c) in enumerate(np.indices((plots_columns, plots_rows)).reshape((2, plots_rows*plots_columns)).T):
+        if ax_idx < len(filters):
+            axs[c,r].imshow(filters[ax_idx], cmap='gray')
+        axs[c,r].set_axis_off()
+    
+    plt.show()
