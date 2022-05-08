@@ -105,7 +105,7 @@ class HoughCalcificationDetection:
         """Performs image enhancment needed for Hough Detection
         """
         # 1. CONTRAST ENHANCEMENT - EQUALIZATION
-        normalized_image = min_max_norm(image, max_val=1)
+        normalized_image = min_max_norm(image, max_val=1).astype('float32')
         dehazed_image = dehaze(normalized_image, **self.dehazing_params)
         #  2. BACKGROUND EXTRACTION
         background = restoration.rolling_ball(
