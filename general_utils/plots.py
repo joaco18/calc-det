@@ -1,6 +1,9 @@
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
+import math
+
+from general_utils.utils import min_max_norm
 
 
 def simple_im_show(img, figsize=(10, 10)):
@@ -19,6 +22,64 @@ def simple_im_show2(img, mask, figsize=(10, 10)):
     ax[0].axis('off')
     ax[1].axis('off')
     plt.show()
+
+
+def plot_blobs(image: np.ndarray, image_blobs: np.ndarray, ax=None):
+    """Overlay blob circles over the image.
+    Args:
+        image (np.ndarray): image to which overlay the blobs
+        image_blobs (np.ndarray): blobs to overlay over the image
+            each row is a candidate (x, y, radius)
+    """
+    if ax is None:
+        f, ax = plt.subplots(1, 1, figsize=(20, 20))
+    # image = min_max_norm(image, 255)
+    image = image.astype('uint8')
+    image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+    for blob in image_blobs:
+        x, y, r = blob
+        x, y = int(x), int(y)
+        image = cv2.circle(
+            image, (x, y), int(math.sqrt(2) * r)+10, (255, 0, 0), 2
+        )
+    ax.imshow(image)
+    plt.axis('off')
+    plt.tight_layout()
+    if ax is None:
+        plt.show()
+
+
+def plot_blobs2(image, blobs_a, blobs_b, ax=None):
+    """Overlay two sets of blob circles over the image.
+    Args:
+        image (np.ndarray): image to which overlay the blobs
+        tp_blobs (np.ndarray): blobs to overlay over the image in red
+            each row is a candidate (x, y, radius)
+        gt_blobs (np.ndarray): blobs to overlay over the image in green.
+            each row is a candidate (x, y, radius)
+    """
+    if ax is None:
+        f, ax = plt.subplots(1, 1, figsize=(20, 20))
+    # image = min_max_norm(image, 255)
+    image = image.astype('uint8')
+    image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+    for blob in blobs_a:
+        x, y, r = blob
+        x, y = int(x), int(y)
+        image = cv2.circle(
+            image, (x, y), int(math.sqrt(2) * r)+10, (255, 0, 0), 2
+        )
+    for blob in blobs_b:
+        x, y, r = blob
+        x, y = int(x), int(y)
+        image = cv2.circle(
+            image, (x, y), int(math.sqrt(2) * r)+25, (0, 255, 0), 2
+        )
+    ax.imshow(image)
+    plt.axis('off')
+    plt.tight_layout()
+    if ax is None:
+        plt.show()
 
 
 def plot_bboxes_over_image(image, bboxes, colors, types, thickness=2, alpha=0.2):
