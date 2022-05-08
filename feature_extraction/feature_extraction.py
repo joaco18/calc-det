@@ -1,5 +1,6 @@
 import multiprocessing as mp
 
+import cv2
 import numpy as np
 import SimpleITK as sitk
 from general_utils.utils import crop_center_coords, min_max_norm
@@ -12,7 +13,7 @@ epsillon = np.finfo(float).eps
 
 
 class CandidatesFeatureExtraction:
-    def __init__(self, patch_size: int):
+    def __init__(self, patch_size: int, gabor_params=None):
         """Defines which features to extract
 
         # TODO: add FE parameters to specify what FE to extract
@@ -22,6 +23,7 @@ class CandidatesFeatureExtraction:
                 used for FE
         """
         self.patch_size = patch_size
+        self.gabor_params = gabor_params
 
     def extract_features(self, candidates: np.ndarray, image: np.ndarray, roi_mask: np.ndarray, fp2tp_sample=None):
         """Extracts features from image patches cropped around given candidates.
@@ -49,6 +51,12 @@ class CandidatesFeatureExtraction:
         candidates_features = []
         # iterating over candidates and cropping patches
 
+        if self.gabor_params:
+            gabor_kernels = gabor_kernels = self.gabor_feature_bank(
+                **self.gabor_params)
+            gabored_images = [cv2.filter2D(
+                image, ddepth=cv2.CV_32F, kernel=k) for k in gabor_kernels]
+
         # TODO: paralelize with Pool
         for coords in candidates:
 
@@ -63,10 +71,15 @@ class CandidatesFeatureExtraction:
             # First order statistics
             features = features | self.first_order_statistics(image_patch)
 
+            # Gabor features
+            if self.gabor_params:
+                features = features | self.gabor_features(
+                    gabored_images, patch_x1, patch_x2, patch_y1, patch_y2)
+
             # TODO: Other features extraction
             # features = features | other_features
-
-            features['coordinates'] = (
+            features['candidate_coordinates'] = coords
+            features['patch_coordinates'] = (
                 (patch_y1, patch_y2), (patch_x1, patch_x2))
             features['patch_mask_intersection'] = (roi_mask[patch_y1:patch_y2,
                                                             patch_x1:patch_x2] > 0).sum()
@@ -101,7 +114,7 @@ class CandidatesFeatureExtraction:
         return -(norm_counts * np.log2(norm_counts + epsillon)).sum(), uniformity
 
     @staticmethod
-    def first_order_statistics(image_patch):
+    def first_order_statistics(image_patch, flag=''):
         """Calculates first-order statistics as defined in 
         https://pyradiomics.readthedocs.io/en/latest/features.html#radiomics.firstorder.RadiomicsFirstOrder
 
@@ -138,20 +151,43 @@ class CandidatesFeatureExtraction:
         img_skew = skew(image_patch.ravel())
         img_kurt = kurtosis(image_patch.ravel())
 
-        return {'img_energy': img_energy,
-                'img_entropy': img_entropy,
-                'img_uniformity': img_uniformity,
-                'img_min': img_min,
-                'img_10th_perc': img_10th_perc,
-                'img_90th_perc': img_90th_perc,
-                'img_max': img_max,
-                'img_mean': img_mean,
-                'img_meadian': img_meadian,
-                'img_inter_quartile_range': img_inter_quartile_range,
-                'img_range': img_range,
-                'img_mean_abs_deviation': img_mean_abs_deviation,
-                'img_robust_mean_abs_deviation': img_robust_mean_abs_deviation,
-                'img_rms': img_rms,
-                'img_std': img_std,
-                'img_skew': img_skew,
-                'img_kurt': img_kurt}
+        return {f'img_energy{flag}': img_energy,
+                f'img_entropy{flag}': img_entropy,
+                f'img_uniformity{flag}': img_uniformity,
+                f'img_min{flag}': img_min,
+                f'img_10th_perc{flag}': img_10th_perc,
+                f'img_90th_perc{flag}': img_90th_perc,
+                f'img_max{flag}': img_max,
+                f'img_mean{flag}': img_mean,
+                f'img_meadian{flag}': img_meadian,
+                f'img_inter_quartile_range{flag}': img_inter_quartile_range,
+                f'img_range{flag}': img_range,
+                f'img_mean_abs_deviation{flag}': img_mean_abs_deviation,
+                f'img_robust_mean_abs_deviation{flag}': img_robust_mean_abs_deviation,
+                f'img_rms{flag}': img_rms,
+                f'img_std{flag}': img_std,
+                f'img_skew{flag}': img_skew,
+                f'img_kurt{flag}': img_kurt}
+
+    def gabor_feature_bank(self, scale, orientation, max_freq=0.2, ksize=(50, 50), sigma=1, gamma=0.5, psi=0):
+        orientations = [(i*np.pi)/orientation for i in range(orientation)]
+        frequencies = [(max_freq)/(np.sqrt(2)**i) for i in range(scale)]
+        gabor_kernels = []
+        for orient in orientations:
+            for freq in frequencies:
+                gabor_kernels.append(cv2.getGaborKernel(
+                    ksize=ksize, sigma=sigma, theta=orient, lambd=1/freq, gamma=gamma, psi=psi))
+
+        return gabor_kernels
+
+    def gabor_features(self, gabored_images, patch_x1, patch_x2, patch_y1, patch_y2):
+        features = {}
+        for img_idx, filtered_image in enumerate(gabored_images):
+            img_patch = filtered_image[patch_y1:patch_y2, patch_x1:patch_x2]
+
+            features[f'gabor_energy_{img_idx}'] = (img_patch**2).sum()
+            features[f'gabor_mean_{img_idx}'] = np.mean(img_patch)
+            features[f'gabor_std_{img_idx}'] = np.std(img_patch)
+            features[f'gabor_skew_{img_idx}'] = skew(img_patch.ravel())
+            features[f'gabor_kurt_{img_idx}'] = kurtosis(img_patch.ravel())
+        return features

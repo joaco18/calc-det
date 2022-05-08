@@ -163,11 +163,11 @@ class INBreast_Dataset(Dataset):
         with open(str(thispath.parent.parent / 'data/abnormal_images.txt'), 'r') as f:
             abnormal_images_ids = [int(img_id.strip()) for img_id in f.readlines()]
 
-        rois2drop = self.rois_df.index[self.rois_df.img_id.isin(abnormal_images_ids)]
-        self.rois_df.drop(index=rois2drop)
-
-        imgs2drop = self.img_df.index[self.img_df.img_id.isin(abnormal_images_ids)]
-        self.img_df.drop(index=imgs2drop)
+        self.rois2drop = self.rois_df.index[self.rois_df.img_id.isin(abnormal_images_ids)]
+        self.rois_df = self.rois_df.drop(index=self.rois2drop)
+        
+        self.imgs2drop = self.img_df.index[self.img_df.img_id.isin(abnormal_images_ids)]
+        self.img_df = self.img_df.drop(index=self.imgs2drop)
 
         # Filter dataset based on different criteria
         self.rois_df = self.rois_df.loc[self.rois_df.stored]
