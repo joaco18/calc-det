@@ -60,6 +60,7 @@ class CandidatesFeatureExtraction:
             gabored_images = [cv2.filter2D(
                 image, ddepth=cv2.CV_32F, kernel=k) for k in gabor_kernels]
 
+        # hhar_features = J(candidates, image)
         # TODO: paralelize with Pool
         for coords in candidates:
 
@@ -92,7 +93,7 @@ class CandidatesFeatureExtraction:
             features['patch_mask_intersection'] = (roi_mask[patch_y1:patch_y2,
                                                             patch_x1:patch_x2] > 0).sum()
             candidates_features.append(features)
-
+        # merge J and candidates_features
         return candidates_features
 
     def split_sample_candidates(self, candidates, roi_mask, sample):
