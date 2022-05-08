@@ -15,7 +15,6 @@ from pathlib import Path
 from scipy import spatial
 from metrics.metrics_utils import compare_and_filter_pairs
 from general_utils.utils import min_max_norm
-# from skimage._shared.coord import ensure_spacing
 
 
 logging.basicConfig(level=logging.INFO)
@@ -27,7 +26,8 @@ dog_parameters = {
     'sigma_ratio': 1.05,
     'n_scales': None,
     'dog_blob_th': 0.006,
-    'dog_overlap': 1
+    'dog_overlap': 1,
+    'dog_min_dist': 4,
 }
 
 hessian_parameters = {
@@ -98,6 +98,7 @@ class HDoGCalcificationDetection:
         self.n_scales = dog_parameters['n_scales']
         self.dog_blob_th = dog_parameters['dog_blob_th']
         self.dog_overlap = dog_parameters['dog_overlap']
+        self.dog_min_dist = dog_parameters['dog_min_dist']
 
         # Hessian parameters
         self.method = hessian_parameters['method']
@@ -402,8 +403,6 @@ class HDoGCalcificationDetection:
         # Sort peaks descending order
         idx_maxsort = np.argsort(-intensities)
         coord = np.transpose(coord)[idx_maxsort]
-        # Check that peaks are separated the minumum distance
-        # coord = ensure_spacing(coord, spacing=min_distance, p_norm=p_norm)
         if len(coord) > num_peaks:
             coord = coord[:num_peaks]
         return coord
@@ -455,7 +454,8 @@ class HDoGCalcificationDetection:
         pairs = np.array(list(tree.query_pairs(distance)))
         if len(pairs) == 0:
             return blobs_array
-        blobs_array = compare_and_filter_pairs(pairs, blobs_array, self.dog_overlap)
+        blobs_array = compare_and_filter_pairs(
+            pairs, blobs_array, self.dog_overlap, self.dog_min_dist)
         return blobs_array
 
     def filter_by_hessian_condition(
