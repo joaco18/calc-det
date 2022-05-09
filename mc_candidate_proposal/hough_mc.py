@@ -79,7 +79,7 @@ class HoughCalcificationDetection:
         return h1_circles, h2_circles
 
     def load_preprocessed_image(self, image, image_id, load_processed_images):
-        """Loads images and performs image engancing needed for Hough transform.
+        """Loads images and performs image enhancing needed for Hough transform.
         Either loads already preprocessed images or loads raw images, enhances them
         and saves them into a given folder.
         """
@@ -88,7 +88,7 @@ class HoughCalcificationDetection:
         if load_processed_images:
             if not self.processed_imgs_path.exists():
                 print(f"{self.processed_imgs_path} not found - creating one")
-                self.processed_imgs_path.mkdir(parents=True, exists_ok=True)
+                self.processed_imgs_path.mkdir(parents=True, exist_ok=True)
 
             if img_path.exists():
                 processed_image = cv2.imread(str(img_path),

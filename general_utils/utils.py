@@ -55,7 +55,7 @@ def sobel_gradient(img):
     return grad
 
 
-def crop_center_coords(cx, cy, image, patch_size=100):
+def crop_center_coords(cx, cy, image_shape, patch_size=100):
     """Returns coordinates of the patch, cropping the image at cx,cy location
     with a given patch size.
 
@@ -64,16 +64,16 @@ def crop_center_coords(cx, cy, image, patch_size=100):
     Args:
         cx (int): x coordinate
         cy (int): y coordinate
-        image (np.ndarray): image to crop patches from
+        image_shape (tuple): image shape
         patch_size (int, optional): patch size. Defaults to 100.
 
     Returns:
         tuple[int]: (x1, x2, y1, y2) coordinates of the patch to crop
     """
     x1 = max(0, cx-patch_size)
-    x2 = min(image.shape[1], cx+patch_size)
+    x2 = min(image_shape[1], cx+patch_size)
     y1 = max(0, cy-patch_size)
-    y2 = min(image.shape[0], cy+patch_size)
+    y2 = min(image_shape[0], cy+patch_size)
     return x1, x2, y1, y2
 
 
