@@ -18,22 +18,72 @@ from feature_extraction.haar_features.haar_extractor import (
 # machine epsillon used to avoid zero errors
 epsillon = np.finfo(float).eps
 
+wavelet_decomp_names = ['LL1', 'LH1', 'HL1', 'HH1', 'LL2', 'LH2', 'HL2', 'HH2']
+glcm_decompositions = ['LH1', 'HL1', 'HH1']
+skimage_glcm_features = ['energy', 'correlation',
+                   'homogeneity', 'contrast', 'dissimilarity']
+
 
 class CandidatesFeatureExtraction:
-    def __init__(self, patch_size: int, gabor_params=None, wavelt_features=None, haar_params=None):
+    def __init__(self, patch_size: int, fos=True, gabor_params=None, wavelt_features=None, haar_params=None):
         """Defines which features to extract
 
-        # TODO: add FE parameters to specify what FE to extract
-
         Args:
-            patch_size (int): Size of the patch extracted around each candidate and
+            patch_size (int): size of the patch extracted around each candidate and
                 used for FE
+            fos (bool): whether to extract 17 first order statistics features
+            gabor_params (dict): parameters for gabor feature bank
+            wavelt_features (dict): parameters for wavelt glcm f.e.
+                needs key 'angle' with a list of angles to calculate GLCMs for.
             haar_params (dict): parameters for haar features extractor
         """
         self.patch_size = patch_size
+        self.fos = fos
         self.gabor_params = gabor_params
         self.wavelt_features = wavelt_features
         self.haar_params = haar_params
+
+        # used to store calculated features names
+        self.get_feature_names()
+
+    def get_feature_names(self):
+        self.feature_names = []
+
+        if self.fos:
+            self.feature_names.extend(['img_energy', 'img_entropy', 'img_uniformity',
+                                       'img_min', 'img_10th_perc', 'img_90th_perc',
+                                       'img_max', 'img_mean', 'img_median',
+                                       'img_inter_quartile_range', 'img_range',
+                                       'img_mean_abs_deviation',
+                                       'img_robust_mean_abs_deviation', 'img_rms',
+                                       'img_std', 'img_skew', 'img_kurt'])
+        if self.gabor_params:
+            for img_idx in range(self.gabor_params['scale']*self.gabor_params['orientation']):
+                self.feature_names.extend([f'gabor_energy_{img_idx}',
+                                           f'gabor_mean_{img_idx}',
+                                           f'gabor_std_{img_idx}',
+                                           f'gabor_skew_{img_idx}',
+                                           f'gabor_kurt_{img_idx}'])
+
+        if self.wavelt_features:
+            for decomp_name in wavelet_decomp_names:
+                self.feature_names.extend([f'patch_mean_{decomp_name}',
+                                           f'patch_skew_{decomp_name}',
+                                           f'patch_std_{decomp_name}',
+                                           f'patch_kur_{decomp_name}',
+                                           f'patch_entropy_{decomp_name}',
+                                           f'patch_uniformity_{decomp_name}',
+                                           f'patch_relsmooth_{decomp_name}'])
+            for fn in skimage_glcm_features:
+                for dn in glcm_decompositions:
+                    for angle_idx in range(len(self.wavelt_features['angles'])):
+                        self.feature_names.append(
+                            f'patch_glcm_{fn}_{dn}_{angle_idx}')
+        
+        # some debug features for now
+        self.feature_names.extend(['candidate_coordinates',
+                                   'patch_coordinates',
+                                   'center_patch_mask_intersection'])
 
     def extract_features(
             self, candidates: np.ndarray, image: np.ndarray, roi_mask: np.ndarray, fp2tp_sample=None):
@@ -84,29 +134,28 @@ class CandidatesFeatureExtraction:
 
             if not self.haar_params:
                 # extracting features
-                features = {}
+                features = []
 
                 # First order statistics features
-                features = features | self.first_order_statistics(image_patch)
+                if self.fos:
+                    features.extend(self.first_order_statistics(image_patch))
 
                 # Gabor features
                 if self.gabor_params:
-                    features = features | self.gabor_features(
-                        gabored_images, patch_x1, patch_x2, patch_y1, patch_y2)
+                    features.extend(self.gabor_features(
+                        gabored_images, patch_x1, patch_x2, patch_y1, patch_y2))
 
                 # Wavelet and GLCM features
                 if self.wavelt_features:
-                    features = features | self.get_wavelet_features(
-                        image_patch)
+                    features.extend(self.get_wavelet_features(image_patch))
 
                 # TODO: Other features extraction
                 # features = features | other_features
 
-                features['candidate_coordinates'] = coords
-                features['patch_coordinates'] = (
-                    (patch_y1, patch_y2), (patch_x1, patch_x2))
-                features['patch_mask_intersection'] = (roi_mask[patch_y1:patch_y2,
-                                                                patch_x1:patch_x2] > 0).sum()
+                features.append(coords)
+                features.append(((patch_y1, patch_y2), (patch_x1, patch_x2)))
+                features.append((roi_mask[patch_y1:patch_y2,
+                                                                patch_x1:patch_x2] > 0).sum())
                 candidates_features.append(features)
             else:
                 candidate_coordinates.append(coords)
@@ -173,8 +222,7 @@ class CandidatesFeatureExtraction:
         uniformity = (norm_counts**2).sum()
         return -(norm_counts * np.log2(norm_counts + epsillon)).sum(), uniformity
 
-    @staticmethod
-    def first_order_statistics(image_patch, flag=''):
+    def first_order_statistics(self, image_patch):
         """Calculates first-order statistics as defined in 
         https://pyradiomics.readthedocs.io/en/latest/features.html#radiomics.firstorder.RadiomicsFirstOrder
 
@@ -182,7 +230,7 @@ class CandidatesFeatureExtraction:
             image_patch (np.ndarray): Image array
 
         Returns:
-            dict: with feature values and names
+            np.ndarray: with feature values and names
         """
         patch_size = image_patch.shape[0]*image_patch.shape[1]
 
@@ -211,23 +259,12 @@ class CandidatesFeatureExtraction:
         img_skew = skew(image_patch.ravel())
         img_kurt = kurtosis(image_patch.ravel())
 
-        return {f'img_energy{flag}': img_energy,
-                f'img_entropy{flag}': img_entropy,
-                f'img_uniformity{flag}': img_uniformity,
-                f'img_min{flag}': img_min,
-                f'img_10th_perc{flag}': img_10th_perc,
-                f'img_90th_perc{flag}': img_90th_perc,
-                f'img_max{flag}': img_max,
-                f'img_mean{flag}': img_mean,
-                f'img_meadian{flag}': img_median,
-                f'img_inter_quartile_range{flag}': img_inter_quartile_range,
-                f'img_range{flag}': img_range,
-                f'img_mean_abs_deviation{flag}': img_mean_abs_deviation,
-                f'img_robust_mean_abs_deviation{flag}': img_robust_mean_abs_deviation,
-                f'img_rms{flag}': img_rms,
-                f'img_std{flag}': img_std,
-                f'img_skew{flag}': img_skew,
-                f'img_kurt{flag}': img_kurt}
+        fos_features = np.asarray([img_energy, img_entropy, img_uniformity, img_min, img_10th_perc,
+                                   img_90th_perc, img_max, img_mean, img_median,
+                                   img_inter_quartile_range, img_range, img_mean_abs_deviation,
+                                   img_robust_mean_abs_deviation, img_rms, img_std, img_skew,
+                                   img_kurt])
+        return fos_features
 
     def gabor_feature_bank(self, scale, orientation, max_freq=0.2, ksize=(50, 50), sigma=1, gamma=0.5, psi=0):
         orientations = [(i*np.pi)/orientation for i in range(orientation)]
@@ -241,16 +278,24 @@ class CandidatesFeatureExtraction:
         return gabor_kernels
 
     def gabor_features(self, gabored_images, patch_x1, patch_x2, patch_y1, patch_y2):
-        features = {}
-        for img_idx, filtered_image in enumerate(gabored_images):
+        """Extracts energy, mean, std, skeweness and kurtosis from patches
+            of images filtered with gabor kernel
+
+        Args:
+            gabored_images (list): list of images filtered with Gabor kernels
+        Returns:
+            np.ndarray: of 4_features*n_gabored_images 
+        """
+        features = []
+        for filtered_image in gabored_images:
             img_patch = filtered_image[patch_y1:patch_y2, patch_x1:patch_x2]
 
-            features[f'gabor_energy_{img_idx}'] = (img_patch**2).sum()
-            features[f'gabor_mean_{img_idx}'] = np.mean(img_patch)
-            features[f'gabor_std_{img_idx}'] = np.std(img_patch)
-            features[f'gabor_skew_{img_idx}'] = skew(img_patch.ravel())
-            features[f'gabor_kurt_{img_idx}'] = kurtosis(img_patch.ravel())
-        return features
+            features.extend([(img_patch**2).sum(),
+                             np.mean(img_patch),
+                             np.std(img_patch),
+                             skew(img_patch.ravel()),
+                             kurtosis(img_patch.ravel())])
+        return np.asarray(features)
 
     @staticmethod
     def get_wavelet_features(patch: np.ndarray):
@@ -266,16 +311,17 @@ class CandidatesFeatureExtraction:
             features (dict): dictionary containing all extracted features
         """
         eight_decomp = CandidatesFeatureExtraction.get_wavelet_decomp(patch)
-        fo_features = {}
-        for idx, single_decomp in enumerate(eight_decomp):
-            fo_features = fo_features | CandidatesFeatureExtraction.wav_first_order(
-                single_decomp, idx)
-        glcm_features = {}
-        for idx, single_decomp in enumerate(eight_decomp[1:4]):
-            glcm_features = glcm_features | CandidatesFeatureExtraction.wav_glcm_features(
-                single_decomp, idx)
+        wavelt_features = []
 
-        return fo_features | glcm_features
+        for idx, single_decomp in enumerate(eight_decomp):
+            wavelt_features.extend(
+                CandidatesFeatureExtraction.wav_first_order(single_decomp, idx))
+
+        for idx, single_decomp in enumerate(eight_decomp[1:4]):
+            wavelt_features.extend(
+                CandidatesFeatureExtraction.wav_glcm_features(single_decomp, idx))
+
+        return np.asarray(wavelt_features)
 
     @staticmethod
     def get_wavelet_decomp(patch: np.ndarray, wavelet_type='haar'):
@@ -307,7 +353,6 @@ class CandidatesFeatureExtraction:
         Returns:
             first_order_features (dict): dictionary containing first order features
         """
-        decomp_names = ['LL1', 'LH1', 'HL1', 'HH1', 'LL2', 'LH2', 'HL2', 'HH2']
         patch_mean = np.mean(single_decomp)
         patch_std = np.std(single_decomp)
         patch_skew = skew(single_decomp.ravel())
@@ -316,13 +361,13 @@ class CandidatesFeatureExtraction:
             single_decomp)
         patch_relsmooth = 1 - 1/(1+patch_std)
 
-        return {f'patch_mean_{decomp_names[idx]}': patch_mean,
-                f'patch_skew_{decomp_names[idx]}': patch_skew,
-                f'patch_std_{decomp_names[idx]}': patch_std,
-                f'patch_kur_{decomp_names[idx]}': patch_kurt,
-                f'patch_entropy_{decomp_names[idx]}': patch_entropy,
-                f'patch_uniformity_{decomp_names[idx]}': patch_unif,
-                f'patch_relsmooth_{decomp_names[idx]}': patch_relsmooth}
+        return np.asarray([patch_mean,
+                           patch_skew,
+                           patch_std,
+                           patch_kurt,
+                           patch_entropy,
+                           patch_unif,
+                           patch_relsmooth])
 
     @staticmethod
     def wav_glcm_features(single_decomp: np.ndarray, idx: int):
@@ -337,30 +382,15 @@ class CandidatesFeatureExtraction:
         Returns:
             glcm_features (dict): dictionary containing glcm features
         """
-        decomp_names = ['LH1', 'HL1', 'HH1']
-        skimage_glcm_features = ['energy', 'correlation',
-                                 'homogeneity', 'contrast', 'dissimilarity']  # 'ASM'
 
         single_decomp_glcm = greycomatrix(min_max_norm(
             single_decomp, max_val=256).astype(np.uint8), [2], [0], normed=True)
 
-        glcm_features_1 = {}
+        glcm_features_1 = []
         for feature_name in skimage_glcm_features:
-            feature_results = greycomatrix(
+            feature_results = greycoprops(
                 single_decomp_glcm, prop=feature_name)
             for fv in feature_results.ravel():
-                glcm_features_1[f'patch_glcm_{feature_name}_{decomp_names[idx]}'] = fv
+                glcm_features_1.append(fv)
 
-        # glcm_features_2 = {}
-        # for glcm in single_decomp_glcm[:,:,0,:]:
-        #     entropy, uniformity = CandidatesFeatureExtraction.entropy_uniformity(glcm)
-        #     sum_squares = (glcm*(1- glcm.mean())**2).sum()
-        #     idx_grid = np.indices((glcm.shape[0], glcm.shape[1]))
-        #     autocorrelation = (idx_grid[0, :, :]*idx_grid[1, :, :]*glcm).sum()
-
-        #     glcm_features_2[f'patch_glcm_entropy_{decomp_names[idx]}'] = entropy
-        #     glcm_features_2[f'patch_glcm_uniformity_{decomp_names[idx]}'] = uniformity
-        #     glcm_features_2[f'patch_glcm_sum_squares_{decomp_names[idx]}'] = sum_squares
-        #     glcm_features_2[f'patch_glcm_autocorrelation_{decomp_names[idx]}'] = autocorrelation
-
-        return glcm_features_1
+        return np.asarray(glcm_features_1)
