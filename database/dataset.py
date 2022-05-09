@@ -343,7 +343,6 @@ class INBreast_Dataset(Dataset):
             mask = cv2.imread(str(mask_path), cv2.IMREAD_GRAYSCALE)
         else:
             mask = np.zeros(image.shape)
-            # TODO: this can be done more efficiently
 
         side = self.img_df['side'].iloc[idx]
         if side == 'R':
@@ -425,16 +424,18 @@ class INBreast_Dataset(Dataset):
                 patch_mask_filenames.append('empty_mask')
                 continue
             roi_name = f'{img_id}_roi_{roi_idx}.png'
-            patch_filenames.append(roi_name)
+            patch_filenames.append(f'{img_id}/{roi_name}')
             if self.normalize == 'min_max':
                 temp = utils.min_max_norm(image_patches[roi_idx, :, :], 255)
             else:
                 temp = image_patches[roi_idx, :, :]
-            cv2.imwrite(str(self.patch_img_path/roi_name), temp)
+            (self.patch_img_path/str(img_id)).mkdir(parents=True, exist_ok=True)
+            cv2.imwrite(str(self.patch_img_path/str(img_id)/roi_name), temp)
 
             if mask_patches[roi_idx, :, :].any():  # Empty images cannot be stored
                 roi_mask_name = f'{img_id}_roi_{roi_idx}_mask.png'
-                patch_mask_filenames.append(roi_mask_name)
+                patch_mask_filenames.append(f'{img_id}/{roi_mask_name}')
+                (self.patch_mask_path/str(img_id)).mkdir(parents=True, exist_ok=True)
                 cv2.imwrite(str(self.patch_mask_path/roi_mask_name), mask_patches[roi_idx, :, :])
             else:
                 patch_mask_filenames.append('empty_mask')
@@ -540,7 +541,6 @@ class INBreast_Dataset(Dataset):
 
         # Accumulator for the output df
         patches_descr = []
-        patch_half_size = int(self.patch_size / 2)
 
         for k, (index, roi) in enumerate(rois_subset_df.iterrows()):
             patches_descr_row = []
@@ -550,32 +550,10 @@ class INBreast_Dataset(Dataset):
                 roi_center = utils.load_point(roi['center'], 'int')
 
             # Get the coordinates of the patch centered in the lesion
-            patch_x1 = roi_center[0] - patch_half_size
-            patch_y1 = roi_center[1] - patch_half_size
-            if patch_x1 < 0:
-                patch_x1 = 0
-                patch_x2 = self.patch_size
-            else:
-                patch_x2 = roi_center[0] + self.patch_size - patch_half_size
-            if patch_y1 < 0:
-                patch_y1 = 0
-                patch_y2 = self.patch_size
-            else:
-                patch_y2 = roi_center[1] + self.patch_size - patch_half_size
-
-            if patch_x2 > image_size[1]:
-                image = np.pad(
-                    image, ((0, 0), (0, self.patch_size)), mode='constant', constant_values=0
-                )
-                mask = np.pad(
-                    mask, ((0, 0), (0, self.patch_size)), mode='constant', constant_values=0
-                )
-            if patch_y2 > image_size[0]:
-                image = np.pad(
-                    image, ((0, self.patch_size), (0, 0)), mode='constant', constant_values=0
-                )
-                mask = np.pad(
-                    mask, ((0, self.patch_size), (0, 0)), mode='constant', constant_values=0
+            patch_x1, patch_x2, patch_y1, patch_y2, image, mask = \
+                utils.patch_coordinates_from_center(
+                    roi_center, image_size, self.patch_size,
+                    use_padding=True, image=image, mask=mask
                 )
 
             # Crop the patch
@@ -593,10 +571,12 @@ class INBreast_Dataset(Dataset):
                 image_patch = utils.min_max_norm(image_patch, 255)
             image_patch = image_patch.astype('uint8')
             patch_filename = f'{img_id}_les_patch_{k}.png'
-            cv2.imwrite(str(self.patch_img_path/patch_filename), image_patch)
+            (self.patch_img_path/str(img_id)).mkdir(parents=True, exist_ok=True)
+            cv2.imwrite(str(self.patch_img_path/str(img_id)/patch_filename), image_patch)
             if mask_patch.any():  # Empty images cannot be stored
+                (self.patch_mask_path/str(img_id)).mkdir(parents=True, exist_ok=True)
                 patch_mask_name = f'{img_id}_les_patch_{k}_mask.png'
-                cv2.imwrite(str(self.patch_mask_path/patch_mask_name), mask_patch)
+                cv2.imwrite(str(self.patch_mask_path/str(img_id)/patch_mask_name), mask_patch)
             else:
                 patch_mask_name = 'empty_mask'
 
@@ -609,7 +589,8 @@ class INBreast_Dataset(Dataset):
 
             patch_bbox = np.array([[patch_x1, patch_y1], [patch_x2, patch_y2]])
             patches_descr_row.extend(
-                [breast_fraction, patch_bbox, patch_filename, patch_mask_name]
+                [breast_fraction, patch_bbox, f'{img_id}/{patch_filename}',
+                 f'{img_id}/{patch_mask_name}']
             )
             for element in columns_of_interest:
                 patches_descr_row.append(self.img_df[element].iloc[idx])

@@ -146,8 +146,12 @@ def get_tp_fp_fn(
     # Get the indexes among all points of ground truth points
     gt_idxs = np.arange(len(gt_circles))
 
-    # Find all pairs of points whose distance is at most max_dist
-    pairs = tree.query_pairs(max_dist)
+    # Get the pairs closer than the required distance
+    pairs = tree.query_pairs(min_dist)
+    if len(pairs) == 0:
+        fn = gt_circles
+        fp = detections
+        return [], fp, fn, [], []
 
     # Get the pairs matching the intersection over union condition
     min_iou = 1 if min_iou is None else min_iou
@@ -169,9 +173,8 @@ def get_tp_fp_fn(
     gt_predicted = datapoints[list(detected_gts), :]
     fp_idx = np.full(len(datapoints), True)
     fp_idx[tp_idx] = False
-    fp_idx[missed_idx] = False
+    fp_idx[gt_idxs] = False
     fp = datapoints[fp_idx, :]
-
     return tp, fp, fn, gt_predicted, close_fp
 
 
