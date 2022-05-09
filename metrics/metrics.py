@@ -173,9 +173,8 @@ def get_tp_fp_fn(
     gt_predicted = datapoints[list(detected_gts), :]
     fp_idx = np.full(len(datapoints), True)
     fp_idx[tp_idx] = False
-    fp_idx[missed_idx] = False
+    fp_idx[gt_idxs] = False
     fp = datapoints[fp_idx, :]
-
     return tp, fp, fn, gt_predicted, close_fp
 
 
