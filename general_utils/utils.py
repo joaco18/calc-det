@@ -77,6 +77,95 @@ def crop_center_coords(cx, cy, image, patch_size=100):
     return x1, x2, y1, y2
 
 
+def patch_coordinates_from_center(
+    center: tuple, image_shape: tuple, patch_size: int, use_padding: bool = True,
+    image: np.ndarray = None, mask: np.ndarray = None
+):
+    """Returns coordinates of the patch, cropping the image at center location
+    with a given patch size. If the center is in the left or upper border shift 
+    the center and crop fixed size patch. If the center is in the left bottom border
+    do the same if use_padding=False, or pad with zeros and crop
+
+    Crops to image boundaries if patch excceeds image dimensions.
+
+    Args:
+        center (tuple): (x coordinate, y coordinate)
+        image_shape (tuple): shape of image to crop patches from
+        patch_size (int, optional): patch size
+        use_padding (bool): If the center falls in right bottob border, optionally
+            padd the image and give the centered patch, if False, shift the center
+            to fit inside the image
+    Returns:
+        x1, x2, y1, y2: coordinates of the patch to crop
+        if use_padding:
+            image (np.ndarray, optional): padded image
+            mask (np.ndarray, optional): padded mask
+    """
+    if use_padding:
+        assert (image is not None) and (mask is not None), \
+            'If padding method is used, image and mask should be provided,' \
+                ' utils.patch_coordinates_from_center'
+    patch_half_size = patch_size // 2
+
+    x1 = center[0] - patch_half_size
+    x2 = center[0] + patch_size - patch_half_size
+    if x1 < 0:
+        x1 = 0
+        x2 = patch_size
+
+    y1 = center[1] - patch_half_size
+    y2 = center[1] + patch_size - patch_half_size
+    if y1 < 0:
+        y1 = 0
+        y2 = patch_size
+
+    if not use_padding:
+        if x2 > image_shape[1]:
+            x2 = image_shape[1]
+            x1 = image_shape[1] - patch_size
+        if y2 > image_shape[0]:
+            y2 = image_shape[0]
+            y1 = image_shape[0] - patch_size
+        return x1, x2, y1, y2
+    else:
+        if x2 > image_shape[1]:
+            image = np.pad(image, ((0, 0), (0, patch_size)), mode='constant', constant_values=0)
+            mask = np.pad(mask, ((0, 0), (0, patch_size)), mode='constant', constant_values=0)
+        if y2 > image_shape[0]:
+            image = np.pad(image, ((0, patch_size), (0, 0)), mode='constant', constant_values=0)
+            mask = np.pad(mask, ((0, patch_size), (0, 0)), mode='constant', constant_values=0)
+        return x1, x2, y1, y2, image, mask
+
+
+@njit(cache=True)
+def integral_img(img_arr):
+    shape = img_arr.shape
+    row_sum = np.zeros(shape)
+    int_img = np.zeros((shape[0] + 1, shape[1] + 1))
+    for x in range(shape[1]):
+        for y in range(shape[0]):
+            row_sum[y, x] = row_sum[y-1, x] + img_arr[y, x]
+            int_img[y+1, x+1] = int_img[y+1, x-1+1] + row_sum[y, x]
+    return int_img.astype(np.int8)
+
+
+@njit(cache=True)
+def diagonal_integral_img(img_arr):
+    shape = img_arr.shape
+    diag_int_img = np.zeros((shape[0] + 3, shape[1] + 3))
+    img_arr_ = np.zeros((shape[0] + 1, shape[1] + 2))
+    img_arr_[1:, 1:-1] = img_arr
+    for y in range(shape[0]):
+        for x in range(img_arr_.shape[1]-1):
+            diag_int_img[y+2, x+2] = \
+                diag_int_img[y+1, x+1] + diag_int_img[y+1, x+3] - \
+                diag_int_img[y, x+2] + img_arr_[y+1, x+1] + \
+                img_arr_[y, x+1]
+            diag_int_img[y+2, 1] = diag_int_img[y+1, 2]
+            diag_int_img[y+2, -1] = diag_int_img[y+1, -2]
+    return diag_int_img[1:-1, 1:-1].astype(np.int8)
+
+
 def get_center_bbox(pt1, pt2):
     """Gets the center of the bbox given by the tl and br inputed points tuples
     Returns:
