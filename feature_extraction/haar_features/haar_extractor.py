@@ -49,16 +49,20 @@ def possible_shapes_rot(base_shape: Size, window_size: int = WINDOW_SIZE) -> tp.
             for dy in range(1, z))
 
 
-def feature_instantiator(window_size: int = WINDOW_SIZE, mode: str = 'all'):
+def feature_instantiator(
+    window_size: int = WINDOW_SIZE, mode: str = 'all',
+    horizontal_feature_types: list = None, rotated_feature_types: list = None
+):
     features = []
     if mode != 'rot':
-        features_types = [
-            (hm.Feature2h, 1, 2), (hm.Feature2v, 2, 1), (hm.Feature3h, 1, 3),
-            (hm.Feature3v, 3, 1), (hm.Feature4h, 1, 4), (hm.Feature4v, 4, 1),
-            (hm.Feature2h2v, 2, 2), (hm.Feature3h3v, 3, 3)
-        ]
+        if horizontal_feature_types is None:
+            horizontal_feature_types = [
+                (hm.Feature2h, 1, 2), (hm.Feature2v, 2, 1), (hm.Feature3h, 1, 3),
+                (hm.Feature3v, 3, 1), (hm.Feature4h, 1, 4), (hm.Feature4v, 4, 1),
+                (hm.Feature2h2v, 2, 2), (hm.Feature3h3v, 3, 3)
+            ]
         features = []
-        for feat in features_types:
+        for feat in horizontal_feature_types:
             features.extend(
                 list(feat[0](location.left, location.top, shape.width, shape.height)
                      for shape in possible_shapes(Size(height=feat[1], width=feat[2]), window_size)
@@ -71,12 +75,13 @@ def feature_instantiator(window_size: int = WINDOW_SIZE, mode: str = 'all'):
                     for shape in possible_shapes_rot(Size(height=1, width=1), window_size)
                     for location in possible_locations_rot(shape, window_size))
 
-        rot_features_types = [
-            hm.Feature2hRot, hm.Feature2vRot, hm.Feature3hRot, hm.Feature3vRot,
-            hm.Feature4hRot, hm.Feature4vRot, hm.Feature2h2vRot, hm.Feature3h3vRot
-        ]
+        if rotated_feature_types is None:
+            rotated_feature_types = [
+                hm.Feature2hRot, hm.Feature2vRot, hm.Feature3hRot, hm.Feature3vRot,
+                hm.Feature4hRot, hm.Feature4vRot, hm.Feature2h2vRot, hm.Feature3h3vRot
+            ]
         features_rot = []
-        for feat in rot_features_types:
+        for feat in rotated_feature_types:
             feature_rot = (map(lambda feat: feat if feat.plausible else None, base_iterator(feat)))
             features_rot.extend([feat for feat in feature_rot if feat is not None])
 
@@ -84,17 +89,25 @@ def feature_instantiator(window_size: int = WINDOW_SIZE, mode: str = 'all'):
 
 
 class HaarFeatureExtractor:
-    def __init__(self, patch_size: int = WINDOW_SIZE, horizontal: bool = True, rot: bool = True):
+    def __init__(
+        self, patch_size: int = WINDOW_SIZE,
+        horizontal: bool = True, rot: bool = True,
+        horizontal_feature_types: list = None, rotated_feature_types: list = None
+    ):
         self.hor = horizontal
         self.rot = rot
         if horizontal:
             self.features_h = feature_instantiator(patch_size, 'hor')
+            self.horizontal_features_types = horizontal_feature_types
         else:
             self.features_h = []
+            self.horizontal_features_types = None
         if rot:
             self.features_r = feature_instantiator(patch_size, 'rot')
+            self.rotated_features_types = rotated_feature_types
         else:
             self.features_r = []
+            self.rotated_features_types = None
         self.patch_size = patch_size
 
     def extract_features(

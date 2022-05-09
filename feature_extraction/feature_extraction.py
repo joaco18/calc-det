@@ -81,7 +81,6 @@ class CandidatesFeatureExtraction:
             patch_x1, patch_x2, patch_y1, patch_y2 = crop_center_coords(
                 coords[0], coords[1], image.shape, self.patch_size//2)
             image_patch = image[patch_y1:patch_y2, patch_x1:patch_x2]
-            
             if not self.haar_params:
                 # extracting features
                 features = {}
@@ -112,7 +111,12 @@ class CandidatesFeatureExtraction:
                 patch_coordinates.append(((patch_y1, patch_y2), (patch_x1, patch_x2)))
                 patch_mask_intersection.append((roi_mask[patch_y1:patch_y2, patch_x1:patch_x2] > 0).sum())
         if self.haar_params:
-            candidates_features = pd.DataFrame(features_haar, columns=[f'f{i}' for i in range(features_haar.shape[1])])
+            try:
+                num_feat = features_haar.shape[1]
+            except:
+                num_feat = len(features_haar)
+                print(len(features_haar))
+            candidates_features = pd.DataFrame(features_haar, columns=[f'f{i}' for i in range(num_feat)])
             candidates_features['candidate_coordinates'] = candidate_coordinates
             candidates_features['patch_coordinates'] = patch_coordinates
             candidates_features['patch_mask_intersection'] = patch_mask_intersection
@@ -132,13 +136,20 @@ class CandidatesFeatureExtraction:
                 TP_idxs.append(coords_idx)
             else:
                 FP_idxs.append(coords_idx)
-        TP_idxs.extend(np.random.choice(
-            FP_idxs, size=len(TP_idxs)*sample, replace=False))
+        print('tp',len(TP_idxs))
+        print('fp',len(FP_idxs))
+        sample_size = len(TP_idxs)*sample
+        if sample_size <= len(FP_idxs):
+            TP_idxs.extend(np.random.choice(
+                FP_idxs, size=sample_size, replace=False))
+        else:
+            TP_idxs.extend(FP_idxs)
         return TP_idxs
 
     def haar_features_extraction(self, image: np.ndarray, detections: np.ndarray):
         """Get horizontal haar features from skimage and rotated ones from our code"""
         images = np.empty((len(detections), 14, 14))
+        print(images.shape)
         # generate a patches array to distribute computation
         for j, location in enumerate(detections):
             # Get the patch arround center
@@ -146,19 +157,39 @@ class CandidatesFeatureExtraction:
                 center=(location[0], location[1]), image_shape=image.shape,
                 patch_size=14, use_padding=False)
             images[j, :, :] = image[y1:y2, x1:x2]
+        print(images.shape)
+
         # Generate computational graph
-        X = delayed(extract_haar_feature_image_skimage(img) for img in images)
+        X = delayed(
+            extract_haar_feature_image_skimage(
+                img, self.haar_params['skimage']['feature_type'],
+                self.haar_params['skimage']['feature_coord']
+            ) for img in images)
+
         # Compute the result
         X = np.array(X.compute(scheduler='processes'))
+        try:
+            self.number_of_skimage_haar_features = X.shape[1]
+        except:
+            self.number_of_skimage_haar_features = len(X)
 
-        # Rotated haar_features
-        haarfe = HaarFeatureExtractor(14, False, True)
-        X_r = []
+        # Our haar_features
+        haarfe = HaarFeatureExtractor(
+            14, False, True,
+            self.haar_params['ours']['horizontal_feature_types'],
+            self.haar_params['ours']['rotated_feature_types']
+        )
+        X_o = []
         for img in images:
-            X_r.append(haarfe.extract_features_from_crop(img))
-        X_r = np.asarray(X_r)
+            X_o.append(haarfe.extract_features_from_crop(img))
+        X_o = np.asarray(X_o)
+        self.number_of_our_horizontal_features = len(haarfe.features_h)
+        self.number_of_our_rotated_features = len(haarfe.features_h)
+        try:
+            X = np.concatenate([X, X_o], axis=1)
+        except:
+            X = np.concatenate([X, X_o])
 
-        X = np.concatenate([X, X_r], axis=1)
         return X
 
     @staticmethod
