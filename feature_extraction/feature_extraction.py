@@ -4,7 +4,7 @@ import cv2
 from joblib import delayed
 import numpy as np
 import SimpleITK as sitk
-from general_utils.utils import crop_center_coords, min_max_norm, patch_coordinates_from_center
+from general_utils.utils import min_max_norm, patch_coordinates_from_center
 from pywt import dwt2
 from radiomics import featureextractor
 from scipy.stats import kurtosis, skew
@@ -36,8 +36,7 @@ class CandidatesFeatureExtraction:
         self.haar_params = haar_params
 
     def extract_features(
-        self, candidates: np.ndarray, image: np.ndarray, roi_mask: np.ndarray, fp2tp_sample=None
-        ):
+            self, candidates: np.ndarray, image: np.ndarray, roi_mask: np.ndarray, fp2tp_sample=None):
         """Extracts features from image patches cropped around given candidates.
 
         Args:
@@ -78,10 +77,11 @@ class CandidatesFeatureExtraction:
         # TODO: paralelize with Pool
         for coords in candidates:
             # calculating canidate cropping patch coordinates
-            patch_x1, patch_x2, patch_y1, patch_y2 = crop_center_coords(
-                coords[0], coords[1], image.shape, self.patch_size//2)
+            patch_x1, patch_x2, patch_y1, patch_y2 = patch_coordinates_from_center(
+                (coords[0], coords[1]), image.shape, self.patch_size, use_padding=False)
+
             image_patch = image[patch_y1:patch_y2, patch_x1:patch_x2]
-            
+
             if not self.haar_params:
                 # extracting features
                 features = {}
@@ -96,7 +96,8 @@ class CandidatesFeatureExtraction:
 
                 # Wavelet and GLCM features
                 if self.wavelt_features:
-                    features = features | self.get_wavelet_features(image_patch)
+                    features = features | self.get_wavelet_features(
+                        image_patch)
 
                 # TODO: Other features extraction
                 # features = features | other_features
@@ -109,10 +110,13 @@ class CandidatesFeatureExtraction:
                 candidates_features.append(features)
             else:
                 candidate_coordinates.append(coords)
-                patch_coordinates.append(((patch_y1, patch_y2), (patch_x1, patch_x2)))
-                patch_mask_intersection.append((roi_mask[patch_y1:patch_y2, patch_x1:patch_x2] > 0).sum())
+                patch_coordinates.append(
+                    ((patch_y1, patch_y2), (patch_x1, patch_x2)))
+                patch_mask_intersection.append(
+                    (roi_mask[patch_y1:patch_y2, patch_x1:patch_x2] > 0).sum())
         if self.haar_params:
-            candidates_features = pd.DataFrame(features_haar, columns=[f'f{i}' for i in range(features_haar.shape[1])])
+            candidates_features = pd.DataFrame(
+                features_haar, columns=[f'f{i}' for i in range(features_haar.shape[1])])
             candidates_features['candidate_coordinates'] = candidate_coordinates
             candidates_features['patch_coordinates'] = patch_coordinates
             candidates_features['patch_mask_intersection'] = patch_mask_intersection
@@ -126,8 +130,8 @@ class CandidatesFeatureExtraction:
         TP_idxs = []
         FP_idxs = []
         for coords_idx, coords in enumerate(candidates):
-            patch_x1, patch_x2, patch_y1, patch_y2 = crop_center_coords(
-                coords[0], coords[1], roi_mask.shape, self.patch_size//2)
+            patch_x1, patch_x2, patch_y1, patch_y2 = patch_coordinates_from_center(
+                (coords[0], coords[1]), roi_mask.shape, self.patch_size, use_padding=False)
             if np.any(roi_mask[patch_y1:patch_y2, patch_x1:patch_x2] > 0):
                 TP_idxs.append(coords_idx)
             else:
