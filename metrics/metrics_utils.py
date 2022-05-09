@@ -124,27 +124,39 @@ def blob_overlap(blob1, blob2):
 
 @njit(cache=True)
 def compare_and_filter_pairs(
-    pairs: np.ndarray, blobs_array: np.ndarray, overlap: float
+    pairs: np.ndarray, blobs_array: np.ndarray, overlap: float, min_distance: float
 ):
-    """Check if closes detections have an overlapping greater than the threshold
+    """Check if close detections have an overlapping greater than the threshold
+    if so, keep the largest
     Args:
         pairs (np.ndarray): indexes of a pair of close points
         blobs_array (np.ndarray): array with blobs as rows
             (y, x, sigma) = (row, col, sigma)
         overlap (float): minimum overlap allowed
+        min_distance (float): minimum distance allowed between centers
     Returns:
         (np.ndarray): filtered array with blobs as rows
             (y, x, sigma) = (row, col, sigma)
     """
     for (i, j) in pairs:
+        # Check overlapping
         blob1, blob2 = blobs_array[i], blobs_array[j]
         if (blob1[-1] == 0) or (blob2[-1] == 0):
             continue
-        if blob_overlap(blob1, blob2) > overlap:
+        pair_overlap = blob_overlap(blob1, blob2)
+        if pair_overlap > overlap:
             if blob1[-1] > blob2[-1]:
                 blob2[-1] = 0
             else:
                 blob1[-1] = 0
+        # Check distance btween centers
+        elif min_distance != 0:
+            centers_distance = math.sqrt((np.power(blob1[:-1]-blob2[:-1], 2)).sum())
+            if centers_distance < min_distance:
+                if blob1[-1] > blob2[-1]:
+                    blob2[-1] = 0
+                else:
+                    blob1[-1] = 0
     return blobs_array[np.where(blobs_array[:, -1] > 0)]
 
 
@@ -157,10 +169,10 @@ def evaluate_pairs_iou_appox(
     """
     fp_idx, tp_idx, detected_gts = [], [], []
     for i, j in pairs:
-        if ((i not in gt_idxs) and (j not in gt_idxs)):
+        if ((i not in gt_idxs) and (j not in gt_idxs)) or (i in gt_idxs and j in gt_idxs):
             continue
         gt_idx = i if ((i in gt_idxs) and (j not in gt_idxs)) else j
-        det_idx = j if (i in gt_idxs) and (j not in gt_idxs) else i
+        det_idx = j if ((i in gt_idxs) and (j not in gt_idxs)) else i
 
         gt = datapoints[gt_idx]
         det = datapoints[det_idx]

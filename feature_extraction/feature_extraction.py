@@ -1,21 +1,26 @@
 import multiprocessing as mp
 
 import cv2
+from joblib import delayed
 import numpy as np
 import SimpleITK as sitk
-from general_utils.utils import crop_center_coords, min_max_norm
+from general_utils.utils import crop_center_coords, min_max_norm, patch_coordinates_from_center
 from pywt import dwt2
 from radiomics import featureextractor
 from scipy.stats import kurtosis, skew
 from skimage.feature import greycomatrix, greycoprops
 from tqdm import tqdm
+import pandas as pd
+from dask import delayed
+from feature_extraction.haar_features.haar_extractor import (
+    extract_haar_feature_image_skimage, HaarFeatureExtractor)
 
 # machine epsillon used to avoid zero errors
 epsillon = np.finfo(float).eps
 
 
 class CandidatesFeatureExtraction:
-    def __init__(self, patch_size: int, gabor_params=None, wavelt_features=None):
+    def __init__(self, patch_size: int, gabor_params=None, wavelt_features=None, haar_params=None):
         """Defines which features to extract
 
         # TODO: add FE parameters to specify what FE to extract
@@ -23,12 +28,16 @@ class CandidatesFeatureExtraction:
         Args:
             patch_size (int): Size of the patch extracted around each candidate and
                 used for FE
+            haar_params (dict): parameters for haar features extractor
         """
         self.patch_size = patch_size
         self.gabor_params = gabor_params
         self.wavelt_features = wavelt_features
+        self.haar_params = haar_params
 
-    def extract_features(self, candidates: np.ndarray, image: np.ndarray, roi_mask: np.ndarray, fp2tp_sample=None):
+    def extract_features(
+        self, candidates: np.ndarray, image: np.ndarray, roi_mask: np.ndarray, fp2tp_sample=None
+        ):
         """Extracts features from image patches cropped around given candidates.
 
         Args:
@@ -60,39 +69,53 @@ class CandidatesFeatureExtraction:
             gabored_images = [cv2.filter2D(
                 image, ddepth=cv2.CV_32F, kernel=k) for k in gabor_kernels]
 
+        if self.haar_params:
+            features_haar = self.haar_features_extraction(image, candidates)
+            candidate_coordinates = []
+            patch_coordinates = []
+            patch_mask_intersection = []
+
         # TODO: paralelize with Pool
         for coords in candidates:
-
             # calculating canidate cropping patch coordinates
             patch_x1, patch_x2, patch_y1, patch_y2 = crop_center_coords(
                 coords[0], coords[1], image.shape, self.patch_size//2)
             image_patch = image[patch_y1:patch_y2, patch_x1:patch_x2]
+            
+            if not self.haar_params:
+                # extracting features
+                features = {}
 
-            # extracting features
-            features = {}
+                # First order statistics features
+                features = features | self.first_order_statistics(image_patch)
 
-            # First order statistics features
-            features = features | self.first_order_statistics(image_patch)
+                # Gabor features
+                if self.gabor_params:
+                    features = features | self.gabor_features(
+                        gabored_images, patch_x1, patch_x2, patch_y1, patch_y2)
 
-            # Gabor features
-            if self.gabor_params:
-                features = features | self.gabor_features(
-                    gabored_images, patch_x1, patch_x2, patch_y1, patch_y2)
+                # Wavelet and GLCM features
+                if self.wavelt_features:
+                    features = features | self.get_wavelet_features(image_patch)
 
-            # Wavelet and GLCM features
-            if self.wavelt_features:
-                features = features | self.get_wavelet_features(image_patch)
+                # TODO: Other features extraction
+                # features = features | other_features
 
-            # TODO: Other features extraction
-            # features = features | other_features
-
-            features['candidate_coordinates'] = coords
-            features['patch_coordinates'] = (
-                (patch_y1, patch_y2), (patch_x1, patch_x2))
-            features['patch_mask_intersection'] = (roi_mask[patch_y1:patch_y2,
-                                                            patch_x1:patch_x2] > 0).sum()
-            candidates_features.append(features)
-
+                features['candidate_coordinates'] = coords
+                features['patch_coordinates'] = (
+                    (patch_y1, patch_y2), (patch_x1, patch_x2))
+                features['patch_mask_intersection'] = (roi_mask[patch_y1:patch_y2,
+                                                                patch_x1:patch_x2] > 0).sum()
+                candidates_features.append(features)
+            else:
+                candidate_coordinates.append(coords)
+                patch_coordinates.append(((patch_y1, patch_y2), (patch_x1, patch_x2)))
+                patch_mask_intersection.append((roi_mask[patch_y1:patch_y2, patch_x1:patch_x2] > 0).sum())
+        if self.haar_params:
+            candidates_features = pd.DataFrame(features_haar, columns=[f'f{i}' for i in range(features_haar.shape[1])])
+            candidates_features['candidate_coordinates'] = candidate_coordinates
+            candidates_features['patch_coordinates'] = patch_coordinates
+            candidates_features['patch_mask_intersection'] = patch_mask_intersection
         return candidates_features
 
     def split_sample_candidates(self, candidates, roi_mask, sample):
@@ -112,6 +135,31 @@ class CandidatesFeatureExtraction:
         TP_idxs.extend(np.random.choice(
             FP_idxs, size=len(TP_idxs)*sample, replace=False))
         return TP_idxs
+
+    def haar_features_extraction(self, image: np.ndarray, detections: np.ndarray):
+        """Get horizontal haar features from skimage and rotated ones from our code"""
+        images = np.empty((len(detections), 14, 14))
+        # generate a patches array to distribute computation
+        for j, location in enumerate(detections):
+            # Get the patch arround center
+            x1, x2, y1, y2 = patch_coordinates_from_center(
+                center=(location[0], location[1]), image_shape=image.shape,
+                patch_size=14, use_padding=False)
+            images[j, :, :] = image[y1:y2, x1:x2]
+        # Generate computational graph
+        X = delayed(extract_haar_feature_image_skimage(img) for img in images)
+        # Compute the result
+        X = np.array(X.compute(scheduler='processes'))
+
+        # Rotated haar_features
+        haarfe = HaarFeatureExtractor(14, False, True)
+        X_r = []
+        for img in images:
+            X_r.append(haarfe.extract_features_from_crop(img))
+        X_r = np.asarray(X_r)
+
+        X = np.concatenate([X, X_r], axis=1)
+        return X
 
     @staticmethod
     def entropy_uniformity(image_patch):

@@ -1,4 +1,6 @@
 # data
+models/bria2014/feature_extraction_cv_adapt.py
+data/Bria/features
 data/train_img_filename.pkl
 data/INbreast Release 1.0
 data/hough_img
