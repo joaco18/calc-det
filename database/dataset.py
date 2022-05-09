@@ -334,7 +334,6 @@ class INBreast_Dataset(Dataset):
             mask = cv2.imread(str(mask_path), cv2.IMREAD_GRAYSCALE)
         else:
             mask = np.zeros(image.shape)
-            # TODO: this can be done more efficiently
 
         side = self.img_df['side'].iloc[idx]
         if side == 'R':
@@ -467,15 +466,15 @@ class INBreast_Dataset(Dataset):
 
         # Get normal patches
         res = []
-        for i in tqdm(range(n_rows), total=n_rows):            # Kept for easy debbuging
-            res.append(self.extract_patches_from_image(i, save_lesions=False))
-        # partial_func = partial(self.extract_patches_from_image, save_lesions=False)
-        # with mp.Pool(self.n_jobs) as pool:
-        #     for result in tqdm(
-        #         pool.imap(partial_func, range(n_rows)),
-        #         total=n_rows
-        #     ):
-        #         res.append(result)
+        # for i in tqdm(range(n_rows), total=n_rows):            # Kept for easy debbuging
+        #     res.append(self.extract_patches_from_image(i, save_lesions=False))
+        partial_func = partial(self.extract_patches_from_image, save_lesions=False)
+        with mp.Pool(self.n_jobs) as pool:
+            for result in tqdm(
+                pool.imap(partial_func, range(n_rows)),
+                total=n_rows
+            ):
+                res.append(result)
         normal_patches_df = pd.concat(res, ignore_index=True)
         normal_patches_df = normal_patches_df.loc[normal_patches_df.label == 'normal']
 
@@ -533,7 +532,6 @@ class INBreast_Dataset(Dataset):
 
         # Accumulator for the output df
         patches_descr = []
-        patch_half_size = int(self.patch_size / 2)
 
         for k, (index, roi) in enumerate(rois_subset_df.iterrows()):
             patches_descr_row = []
@@ -543,32 +541,10 @@ class INBreast_Dataset(Dataset):
                 roi_center = utils.load_point(roi['center'], 'int')
 
             # Get the coordinates of the patch centered in the lesion
-            patch_x1 = roi_center[0] - patch_half_size
-            patch_y1 = roi_center[1] - patch_half_size
-            if patch_x1 < 0:
-                patch_x1 = 0
-                patch_x2 = self.patch_size
-            else:
-                patch_x2 = roi_center[0] + self.patch_size - patch_half_size
-            if patch_y1 < 0:
-                patch_y1 = 0
-                patch_y2 = self.patch_size
-            else:
-                patch_y2 = roi_center[1] + self.patch_size - patch_half_size
-
-            if patch_x2 > image_size[1]:
-                image = np.pad(
-                    image, ((0, 0), (0, self.patch_size)), mode='constant', constant_values=0
-                )
-                mask = np.pad(
-                    mask, ((0, 0), (0, self.patch_size)), mode='constant', constant_values=0
-                )
-            if patch_y2 > image_size[0]:
-                image = np.pad(
-                    image, ((0, self.patch_size), (0, 0)), mode='constant', constant_values=0
-                )
-                mask = np.pad(
-                    mask, ((0, self.patch_size), (0, 0)), mode='constant', constant_values=0
+            patch_x1, patch_x2, patch_y1, patch_y2, image, mask = \
+                utils.patch_coordinates_from_center(
+                    roi_center, image_size, self.patch_size,
+                    use_padding=True, image=image, mask=mask
                 )
 
             # Crop the patch
