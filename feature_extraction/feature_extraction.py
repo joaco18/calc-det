@@ -19,10 +19,7 @@ skimage_glcm_features = ['energy', 'correlation', 'homogeneity', 'contrast', 'di
 
 
 class CandidatesFeatureExtraction:
-    def __init__(
-        self, patch_size: int, fos=True, gabor_params=None,
-        wavelt_features=None, haar_params=None, labeling_center_region_size: int = 7
-    ):
+    def __init__(self, patch_size: int, fos=True, gabor_params=None, wavelt_features=None, haar_params=None, center_crop_size=7):
         """Defines which features to extract
 
         Args:
@@ -33,15 +30,15 @@ class CandidatesFeatureExtraction:
             wavelt_features (dict): parameters for wavelt glcm f.e.
                 needs key 'angle' with a list of angles to calculate GLCMs for.
             haar_params (dict): parameters for haar features extractor
-            labeling_center_region_size (int): area arround the center of the
-                candidate to consider in the labeling process.
+            center_crop_size (int): size of the patch center crop to consider
+                when looking for intersection in mask while defining a TP
         """
-        self.labeling_center_region_size = labeling_center_region_size
         self.patch_size = patch_size
         self.fos = fos
         self.gabor_params = gabor_params
         self.wavelt_features = wavelt_features
         self.haar_params = haar_params
+        self.center_crop_size = center_crop_size
 
         # used to store calculated features names
         self.get_feature_names()
@@ -89,16 +86,15 @@ class CandidatesFeatureExtraction:
             roi_mask: np.ndarray, fp2tp_sample=None):
         """Extracts features from image patches cropped around given candidates.
         Args:
-            candidates (np.ndarray): of dtype=int containing candidats for
-                FE of shape (n_candidates, 3). Second axis should contain
-                (x_coord, y_coord, radius).
+            candidates (np.ndarray): of dtype=int containing candidats for FE of shape (n_candidates, 3).
+                Second axis should contain (x_coord, y_coord, radius).
             image (np.ndarray): 2D image used for cropping and FE
             roi_mask (np.ndarray): true rois mask
-            fp2tp_sample (int, optional): number of FP candidates to sample
-                for each TP candidate. If not None, total number of sampled
-                candidates will be len(TP_candidates)*(fp2tp_sample + 1).
-                Defaults to None which means no sampling is performed and
-                features for all candidates are extracted.
+            fp2tp_sample (int, optional): number of FP candidates to sample for each TP candidate.
+                If not None, total number of sampled candidates will be len(TP_candidates)*(fp2tp_sample + 1).
+                Defaults to None which means no sampling is performed and features for all candidates are
+                extracted.
+
         Returns:
             np.array: rows candidates, columns features
         """
@@ -128,6 +124,9 @@ class CandidatesFeatureExtraction:
                 (coords[0], coords[1]), image.shape, self.patch_size, use_padding=False
             )
 
+            # getting coordinates of the patch center crop
+            center_px1, center_px2, center_py1, center_py2 = crop_patch_around_center(
+                patch_x1, patch_x2, patch_y1, patch_y2, self.center_crop_size)
             image_patch = image[patch_y1:patch_y2, patch_x1:patch_x2]
 
             # extracting features
@@ -148,7 +147,9 @@ class CandidatesFeatureExtraction:
 
             features.append(coords)
             features.append(((patch_y1, patch_y2), (patch_x1, patch_x2)))
-            features.append((roi_mask[patch_y1:patch_y2, patch_x1:patch_x2] > 0).sum())
+            # cropping center of the patch now
+            features.append(
+                (roi_mask[center_py1:center_py2, center_px1:center_px2] > 0).sum())
             candidates_features.append(features)
         candidates_features = np.asarray(candidates_features, dtype=object)
         if self.haar_params:
@@ -168,10 +169,16 @@ class CandidatesFeatureExtraction:
         TP_idxs = []
         FP_idxs = []
         for coords_idx, coords in enumerate(candidates):
+            # getting patch coordinates
             patch_x1, patch_x2, patch_y1, patch_y2 = patch_coordinates_from_center(
-                (coords[0], coords[1]), roi_mask.shape, self.labeling_center_region_size,
-                use_padding=False)
-            if np.any(roi_mask[patch_y1:patch_y2, patch_x1:patch_x2] > 0):
+                (coords[0], coords[1]), roi_mask.shape, self.patch_size, use_padding=False)
+            # getting patch centre crop coordinates 
+            # TODO: I think this can be ommited, just using the self.center_crop_size in the funcition
+            # you just check a patch of 7x7 arround the center and no need to call this other function
+            center_px1, center_px2, center_py1, center_py2 = crop_patch_around_center(
+                patch_x1, patch_x2, patch_y1, patch_y2, self.center_crop_size)
+
+            if np.any(roi_mask[center_py1:center_py2, center_px1:center_px2] > 0):
                 TP_idxs.append(coords_idx)
             else:
                 FP_idxs.append(coords_idx)
@@ -317,7 +324,7 @@ class CandidatesFeatureExtraction:
         Args:
             gabored_images (list): list of images filtered with Gabor kernels
         Returns:
-            np.ndarray: of 4_features*n_gabored_images
+            np.ndarray: of 4_features*n_gabored_images 
         """
         features = []
         for filtered_image in gabored_images:
