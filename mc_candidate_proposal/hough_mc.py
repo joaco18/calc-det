@@ -7,19 +7,34 @@ from general_utils.dehazing import dehaze
 from pathlib import Path
 from skimage import restoration
 
+DEHAZING_PARAMS = {'omega': 0.9, 'window_size': 11, 'radius': 40, 'eps': 1e-5}
+
+HOUGH1_PARAMS = {'method': cv2.HOUGH_GRADIENT, 'dp': 1, 'minDist': 20,
+                 'param1': 300, 'param2': 8,  'minRadius': 2, 'maxRadius': 20}
+
+HOUGH2_PARAMS = {'method': cv2.HOUGH_GRADIENT, 'dp': 1, 'minDist': 20,
+                 'param1': 300, 'param2': 10,  'minRadius': 2, 'maxRadius': 20}
+
+BACK_EXT_RADIOUS = 50
+
+EROSION_ITER = 20
+EROSION_SIZE = 5
+this_file_path = Path(__file__).resolve()
+
 
 class HoughCalcificationDetection:
     """Microcalcification detection using Hough Transforms
     """
 
-    def __init__(self, dehazing_params: dict,
-                 back_ext_radius: int,
-                 processed_imgs_path: str,
-                 hough1_params: dict,
-                 hough2_params: dict,
-                 erosion_iter=30,
-                 erosion_size=6,
-                 n_jobs=6):
+    def __init__(self, dehazing_params: dict = DEHAZING_PARAMS,
+                 back_ext_radius: int = BACK_EXT_RADIOUS,
+                 processed_imgs_path: str = this_file_path.parent.parent.parent / 'data/hough_img',
+                 hough1_params: dict = HOUGH1_PARAMS,
+                 hough2_params: dict = HOUGH2_PARAMS,
+                 erosion_iter: int = EROSION_ITER,
+                 erosion_size: int = EROSION_SIZE,
+                 n_jobs: int = 6
+    ):
         """Constructor for detHoughCalcificationDetection class
 
         Args:
@@ -45,7 +60,7 @@ class HoughCalcificationDetection:
         self.hough2_params = hough2_params
         self.erosion_iter = erosion_iter
         self.erosion_size = erosion_size
-        self.n_jobs = 6
+        self.n_jobs = n_jobs
 
     def detect(self, image: np.ndarray, image_id: int, load_processed_images=True, hough2=False):
         """Detects mC for a given image

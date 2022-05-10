@@ -161,12 +161,10 @@ class INBreast_Dataset(Dataset):
 
         # Add validation partition
         self.generate_validation_partition()
-        # Filter out the anomalies
 
         # Filter dataset based on different criteria
         self.filter_excluded_cases()
-        self.rois_df = self.rois_df.loc[self.rois_df.stored]
-        self.rois_df.reset_index(drop=True, inplace=True)
+        self.filter_stored_rois()
         self.filter_by_partition()
         self.filter_by_lesion_size()
         self.limit_to_selected_views()
@@ -238,6 +236,10 @@ class INBreast_Dataset(Dataset):
         imgs2drop = self.img_df.index[self.img_df.img_id.isin(abnormal_images_ids)]
         self.img_df.drop(index=imgs2drop)
         self.img_df.reset_index(inplace=True, drop=True)
+
+    def filter_stored_rois(self):
+        self.rois_df = self.rois_df.loc[self.rois_df.stored]
+        self.rois_df.reset_index(drop=True, inplace=True)
 
     def generate_validation_partition(self):
         """Add validation partition"""
@@ -713,6 +715,9 @@ class INBreast_Dataset(Dataset):
             lesion_tag = 'lesion_bbox'
             poit_tag = 'point_px'
         for img_id in self.rois_df.img_id.unique():
+            side = self.img_df.loc[self.img_df.img_id == img_id, 'side'].values[0]
+            if side != 'R':
+                continue
             if self.cropped_imgs:
                 breast_bbox = self.img_df.loc[self.img_df.img_id == img_id, 'breast_bbox'].values[0]
                 if isinstance(breast_bbox, str):
@@ -720,7 +725,7 @@ class INBreast_Dataset(Dataset):
                         self.img_df.loc[self.img_df.img_id == img_id, 'breast_bbox'].values[0],
                         dtype=int
                     )
-                bbox_shape = (
+                breast_bbox_shape = (
                     breast_bbox[1][0] - breast_bbox[0][0],
                     breast_bbox[1][1] - breast_bbox[0][1]
                 )
@@ -728,7 +733,7 @@ class INBreast_Dataset(Dataset):
                 image_size = utils.load_point(
                     self.img_df.loc[self.img_df.img_id == img_id, 'img_size'].values[0]
                 )
-                bbox_shape = (image_size[1], image_size[0])
+                breast_bbox_shape = (image_size[1], image_size[0])
 
             centers = self.rois_df.loc[self.rois_df.img_id == img_id, center_tag].tolist()
             if isinstance(centers[0], str):
@@ -736,7 +741,7 @@ class INBreast_Dataset(Dataset):
             else:
                 centers = [np.array(point) for point in centers]
             for k, center in enumerate(centers):
-                centers[k][0] = bbox_shape[0] - center[0]
+                centers[k][0] = breast_bbox_shape[0] - center[0]
             centers = [tuple(center) for center in centers]
 
             lesion_bboxs_crop = \
@@ -745,21 +750,19 @@ class INBreast_Dataset(Dataset):
                 if isinstance(lesion_bbox_crop, str):
                     lesion_bbox_crop = utils.load_coords(lesion_bbox_crop, 'int')
                 lesion_bbox_crop = [
-                    (bbox_shape[0] - point[0], point[1]) for point in lesion_bbox_crop
+                    (breast_bbox_shape[0] - point[0], point[1]) for point in lesion_bbox_crop
                 ]
-                side = self.img_df.loc[self.img_df.img_id == img_id, 'side'].values[0]
-                if side == 'R':
-                    lesion_bboxs_crop[k] = [
-                        (lesion_bbox_crop[1][0], lesion_bbox_crop[0][1]),
-                        (lesion_bbox_crop[0][0], lesion_bbox_crop[1][1]),
-                    ]
+                lesion_bboxs_crop[k] = [
+                    (lesion_bbox_crop[1][0], lesion_bbox_crop[0][1]),
+                    (lesion_bbox_crop[0][0], lesion_bbox_crop[1][1]),
+                ]
 
             point_pxs_crop = self.rois_df.loc[self.rois_df.img_id == img_id, poit_tag].values
             for k, point_px_crop in enumerate(point_pxs_crop):
                 if isinstance(point_px_crop, str):
                     point_px_crop = utils.load_coords(point_px_crop, 'int')
                 point_pxs_crop[k] = [
-                    (bbox_shape[0] - point[0], point[1]) for point in point_px_crop
+                    (breast_bbox_shape[0] - point[0], point[1]) for point in point_px_crop
                 ]
 
             # print(point_pxs_crop)
