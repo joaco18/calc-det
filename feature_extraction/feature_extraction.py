@@ -1,19 +1,21 @@
 import multiprocessing as mp
 
 import cv2
-from joblib import delayed
 import numpy as np
+import pandas as pd
 import SimpleITK as sitk
-from general_utils.utils import min_max_norm, patch_coordinates_from_center
+from dask import delayed
+from general_utils.utils import (crop_patch_around_center, min_max_norm,
+                                 patch_coordinates_from_center)
+from joblib import delayed
 from pywt import dwt2
 from radiomics import featureextractor
 from scipy.stats import kurtosis, skew
 from skimage.feature import greycomatrix, greycoprops
 from tqdm import tqdm
-import pandas as pd
-from dask import delayed
+
 from feature_extraction.haar_features.haar_extractor import (
-    extract_haar_feature_image_skimage, HaarFeatureExtractor)
+    HaarFeatureExtractor, extract_haar_feature_image_skimage)
 
 # machine epsillon used to avoid zero errors
 epsillon = np.finfo(float).eps
@@ -21,11 +23,11 @@ epsillon = np.finfo(float).eps
 wavelet_decomp_names = ['LL1', 'LH1', 'HL1', 'HH1', 'LL2', 'LH2', 'HL2', 'HH2']
 glcm_decompositions = ['LH1', 'HL1', 'HH1']
 skimage_glcm_features = ['energy', 'correlation',
-                   'homogeneity', 'contrast', 'dissimilarity']
+                         'homogeneity', 'contrast', 'dissimilarity']
 
 
 class CandidatesFeatureExtraction:
-    def __init__(self, patch_size: int, fos=True, gabor_params=None, wavelt_features=None, haar_params=None):
+    def __init__(self, patch_size: int, fos=True, gabor_params=None, wavelt_features=None, haar_params=None, center_crop_size=7):
         """Defines which features to extract
 
         Args:
@@ -36,12 +38,15 @@ class CandidatesFeatureExtraction:
             wavelt_features (dict): parameters for wavelt glcm f.e.
                 needs key 'angle' with a list of angles to calculate GLCMs for.
             haar_params (dict): parameters for haar features extractor
+            center_crop_size (int): size of the patch center crop to consider
+                when looking for intersection in mask while defining a TP
         """
         self.patch_size = patch_size
         self.fos = fos
         self.gabor_params = gabor_params
         self.wavelt_features = wavelt_features
         self.haar_params = haar_params
+        self.center_crop_size = center_crop_size
 
         # used to store calculated features names
         self.get_feature_names()
@@ -79,7 +84,7 @@ class CandidatesFeatureExtraction:
                     for angle_idx in range(len(self.wavelt_features['angles'])):
                         self.feature_names.append(
                             f'patch_glcm_{fn}_{dn}_{angle_idx}')
-        
+
         # some debug features for now
         self.feature_names.extend(['candidate_coordinates',
                                    'patch_coordinates',
@@ -130,6 +135,9 @@ class CandidatesFeatureExtraction:
             patch_x1, patch_x2, patch_y1, patch_y2 = patch_coordinates_from_center(
                 (coords[0], coords[1]), image.shape, self.patch_size, use_padding=False)
 
+            # getting coordinates of the patch center crop
+            center_px1, center_px2, center_py1, center_py2 = crop_patch_around_center(
+                patch_x1, patch_x2, patch_y1, patch_y2, self.center_crop_size)
             image_patch = image[patch_y1:patch_y2, patch_x1:patch_x2]
 
             if not self.haar_params:
@@ -149,20 +157,21 @@ class CandidatesFeatureExtraction:
                 if self.wavelt_features:
                     features.extend(self.get_wavelet_features(image_patch))
 
-                # TODO: Other features extraction
-                # features = features | other_features
-
                 features.append(coords)
                 features.append(((patch_y1, patch_y2), (patch_x1, patch_x2)))
-                features.append((roi_mask[patch_y1:patch_y2,
-                                                                patch_x1:patch_x2] > 0).sum())
+                # cropping center of the patch now
+                features.append(
+                    (roi_mask[center_py1:center_py2, center_px1:center_px2] > 0).sum())
                 candidates_features.append(features)
             else:
                 candidate_coordinates.append(coords)
                 patch_coordinates.append(
                     ((patch_y1, patch_y2), (patch_x1, patch_x2)))
+
+                # saving the intersection between the center of the patch and the mask
                 patch_mask_intersection.append(
-                    (roi_mask[patch_y1:patch_y2, patch_x1:patch_x2] > 0).sum())
+                    (roi_mask[center_py1:center_py2, center_px1:center_px2] > 0).sum())
+
         if self.haar_params:
             candidates_features = pd.DataFrame(
                 features_haar, columns=[f'f{i}' for i in range(features_haar.shape[1])])
@@ -179,9 +188,14 @@ class CandidatesFeatureExtraction:
         TP_idxs = []
         FP_idxs = []
         for coords_idx, coords in enumerate(candidates):
+            # getting patch coordinates
             patch_x1, patch_x2, patch_y1, patch_y2 = patch_coordinates_from_center(
                 (coords[0], coords[1]), roi_mask.shape, self.patch_size, use_padding=False)
-            if np.any(roi_mask[patch_y1:patch_y2, patch_x1:patch_x2] > 0):
+            # getting patch centre crop coordinates 
+            center_px1, center_px2, center_py1, center_py2 = crop_patch_around_center(
+                patch_x1, patch_x2, patch_y1, patch_y2, self.center_crop_size)
+
+            if np.any(roi_mask[center_py1:center_py2, center_px1:center_px2] > 0):
                 TP_idxs.append(coords_idx)
             else:
                 FP_idxs.append(coords_idx)
