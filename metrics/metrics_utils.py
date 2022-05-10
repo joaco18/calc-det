@@ -182,7 +182,7 @@ def evaluate_pairs_iou_appox(
         r1, r2 = gt[-1], det[-1]
 
         # Don't check overlaping
-        if min_iou >= 1:
+        if min_iou > 1:
             fp_idx.append(det_idx)
         elif min_iou == 0:
             tp_idx.append(det_idx)
