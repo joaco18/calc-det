@@ -147,7 +147,7 @@ def get_tp_fp_fn(
     gt_idxs = np.arange(len(gt_circles))
 
     # Get the pairs closer than the required distance
-    pairs = tree.query_pairs(min_dist)
+    pairs = tree.query_pairs(max_dist)
     if len(pairs) == 0:
         fn = gt_circles
         fp = detections
