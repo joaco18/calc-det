@@ -5,7 +5,6 @@ import feature_extraction.haar_features.haar_modules as hm
 import numpy as np
 import typing as tp
 from dask import delayed
-from skimage.transform import integral_image
 from skimage.feature import haar_like_feature
 
 
@@ -88,6 +87,15 @@ def feature_instantiator(
     return features + features_rot
 
 
+@delayed
+def extract_haar_feature_image_skimage(img, feature_type=None, feature_coord=None):
+    """Extract the haar feature for the current image"""
+    ii = utils.integral_img(img)[1:, 1:]
+    return haar_like_feature(ii, 0, 0, ii.shape[0], ii.shape[1],
+                             feature_type=feature_type,
+                             feature_coord=feature_coord)
+
+
 class HaarFeatureExtractor:
     def __init__(
         self, patch_size: int = WINDOW_SIZE,
@@ -97,14 +105,13 @@ class HaarFeatureExtractor:
         self.hor = horizontal
         self.rot = rot
         if horizontal:
-            self.features_h = feature_instantiator(patch_size, 'hor')
-            self.horizontal_features_types = horizontal_feature_types
+            self.features_h = feature_instantiator(patch_size, 'hor', horizontal_feature_types)
         else:
             self.features_h = []
             self.horizontal_features_types = None
         if rot:
-            self.features_r = feature_instantiator(patch_size, 'rot')
-            self.rotated_features_types = rotated_feature_types
+            self.features_r = feature_instantiator(
+                patch_size, 'rot', rotated_feature_types=rotated_feature_types)
         else:
             self.features_r = []
             self.rotated_features_types = None
@@ -147,12 +154,6 @@ class HaarFeatureExtractor:
                     features_values[i] = np.dot(
                         self.diagintegral_image[points_coords_y, points_coords_x], feature.coeffs)
             image_features[j, :] = features_values
-
-        # Convert to dataframe
-        # image_features = pd.DataFrame(
-        #     data=image_features, columns=[f'f{i}' for i in range(len(features_values))]
-        # )
-        # image_features.reset_index(drop=True, inplace=True)
         return image_features
 
     def extract_features_from_crop(self, img):
@@ -175,12 +176,3 @@ class HaarFeatureExtractor:
                     self.diagintegral_image[feature.coords_y, feature.coords_x],
                     feature.coeffs)
         return features_values
-
-
-@delayed
-def extract_haar_feature_image_skimage(img, feature_type=None, feature_coord=None):
-    """Extract the haar feature for the current image"""
-    ii = integral_image(img)
-    return haar_like_feature(ii, 0, 0, ii.shape[0], ii.shape[1],
-                             feature_type=feature_type,
-                             feature_coord=feature_coord)
