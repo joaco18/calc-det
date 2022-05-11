@@ -35,6 +35,7 @@ class Feature2h(Feature):
     def __init__(self, x: int, y: int, width: int, height: int):
         super().__init__(x, y, width, height)
         hw = width // 2
+        self.type = 'Feature2h'
         self.coords_x = np.asarray(
             [x,      x + hw,     x,          x + hw,
              x + hw, x + width,  x + hw,     x + width])
@@ -52,6 +53,7 @@ class Feature2v(Feature):
     def __init__(self, x: int, y: int, width: int, height: int):
         super().__init__(x, y, width, height)
         hh = height // 2
+        self.type = 'Feature2v'
         self.coords_x = np.asarray(
             [x,      x + width,  x,          x + width,
              x,      x + width,  x,          x + width])
@@ -69,6 +71,7 @@ class Feature3h(Feature):
     def __init__(self, x: int, y: int, width: int, height: int):
         super().__init__(x, y, width, height)
         tw = width // 3
+        self.type = 'Feature3h'
         self.coords_x = np.asarray(
             [x,        x + tw,    x,          x + tw,
              x + tw,   x + 2*tw,  x + tw,     x + 2*tw,
@@ -89,6 +92,7 @@ class Feature3v(Feature):
     def __init__(self, x: int, y: int, width: int, height: int):
         super().__init__(x, y, width, height)
         th = height // 3
+        self.type = 'Feature3v'
         self.coords_x = np.asarray(
             [x,        x + width,  x,          x + width,
              x,        x + width,  x,          x + width,
@@ -109,6 +113,7 @@ class Feature4h(Feature):
     def __init__(self, x: int, y: int, width: int, height: int):
         super().__init__(x, y, width, height)
         tw = width // 4
+        self.type = 'Feature4h'
         self.coords_x = np.asarray(
             [x,        x + tw,    x,          x + tw,
              x + tw,   x + 3*tw,  x + tw,     x + 3*tw,
@@ -129,6 +134,7 @@ class Feature4v(Feature):
     def __init__(self, x: int, y: int, width: int, height: int):
         super().__init__(x, y, width, height)
         th = height // 4
+        self.type = 'Feature4v'
         self.coords_x = np.asarray(
             [x,        x + width,  x,          x + width,
              x,        x + width,  x,          x + width,
@@ -150,6 +156,7 @@ class Feature2h2v(Feature):
         super().__init__(x, y, width, height)
         hw = width // 2
         hh = height // 2
+        self.type = 'Feature2h2v'
         self.coords_x = np.asarray(
             [x,      x + hw,     x,          x + hw,
              x + hw, x + width,  x + hw,     x + width,
@@ -174,7 +181,7 @@ class Feature3h3v(Feature):
         super().__init__(x, y, width, height)
         tw = width // 3
         th = height // 3
-
+        self.type = 'Feature3h3v'
         self.coords_x = np.asarray(
             [x,        x + width,  x,          x + width,
              x,        x + tw,     x,          x + tw,
@@ -238,7 +245,7 @@ class FeatureRot:
 class Feature2hRot(FeatureRot):
     def __init__(self, x: int, y: int, dx: int, dy: int, z: int):
         super().__init__(x, y, dx, dy, z)
-
+        self.type = 'Feature2hRot'
         self.plausible = \
             ((x + 2*dx) <= z) and ((y + 2*dx + dy) <= z) and ((x - dy) >= 0)
 
@@ -258,7 +265,7 @@ class Feature2hRot(FeatureRot):
 class Feature2vRot(FeatureRot):
     def __init__(self, x: int, y: int, dx: int, dy: int, z: int):
         super().__init__(x, y, dx, dy, z)
-
+        self.type = 'Feature2vRot'
         self.plausible = \
             ((x + dx) <= z) and ((y + dx + 2*dy) <= z) and ((x - 2*dy) >= 0)
 
@@ -278,7 +285,7 @@ class Feature2vRot(FeatureRot):
 class Feature3hRot(FeatureRot):
     def __init__(self, x: int, y: int, dx: int, dy: int, z: int):
         super().__init__(x, y, dx, dy, z)
-
+        self.type = 'Feature3hRot'
         self.plausible = \
             ((x + 3*dx) <= z) and ((y + 3*dx + dy) <= z) and ((x - dy) >= 0)
 
@@ -298,7 +305,7 @@ class Feature3hRot(FeatureRot):
 class Feature3vRot(FeatureRot):
     def __init__(self, x: int, y: int, dx: int, dy: int, z: int):
         super().__init__(x, y, dx, dy, z)
-
+        self.type = 'Feature3vRot'
         self.plausible = \
             ((x + dx) <= z) and ((y + dx + 3*dy) <= z) and ((x - 3*dy) >= 0)
 
@@ -318,7 +325,7 @@ class Feature3vRot(FeatureRot):
 class Feature4hRot(FeatureRot):
     def __init__(self, x: int, y: int, dx: int, dy: int, z: int):
         super().__init__(x, y, dx, dy, z)
-
+        self.type = 'Feature4hRot'
         self.plausible = \
             ((x + 4*dx) <= z) and ((y + 4*dx + dy) <= z) and ((x - dy) >= 0)
 
@@ -338,7 +345,7 @@ class Feature4hRot(FeatureRot):
 class Feature4vRot(FeatureRot):
     def __init__(self, x: int, y: int, dx: int, dy: int, z: int):
         super().__init__(x, y, dx, dy, z)
-
+        self.type = 'Feature4vRot'
         self.plausible = \
             ((x + dx) <= z) and ((y + dx + 4*dy) <= z) and ((x - 4*dy) >= 0)
 
@@ -358,7 +365,7 @@ class Feature4vRot(FeatureRot):
 class Feature2h2vRot(FeatureRot):
     def __init__(self, x: int, y: int, dx: int, dy: int, z: int):
         super().__init__(x, y, dx, dy, z)
-
+        self.type = 'Feature2h2vRot'
         self.plausible = \
             ((x + 2*dx) <= z) and ((y + 2*dx + 2*dy) <= z) and ((x - 2*dy) >= 0)
 
@@ -381,7 +388,7 @@ class Feature2h2vRot(FeatureRot):
 class Feature3h3vRot(FeatureRot):
     def __init__(self, x: int, y: int, dx: int, dy: int, z: int):
         super().__init__(x, y, dx, dy, z)
-
+        self.type = 'Feature3h3vRot'
         self.plausible = \
             ((x + 3*dx) <= z) and ((y + 3*dx + 3*dy) <= z) and ((x - 3*dy) >= 0)
 
