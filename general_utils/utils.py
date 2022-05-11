@@ -3,7 +3,7 @@ import numpy as np
 import logging
 from numba import njit
 
-from database.dataset import INBreast_Dataset
+# from database.dataset import INBreast_Dataset
 
 logging.basicConfig(level=logging.INFO)
 
@@ -184,7 +184,8 @@ def crop_patch_around_center(patch_x1, patch_x2, patch_y1, patch_y2, center_crop
     center_px2 = p_center_x + center_crop_size//2 + center_crop_size % 2
     return center_px1, center_px2, center_py1, center_py2
 
-def get_patch_labels(patches: np.ndarray, image_ids: np.ndarray, db: INBreast_Dataset, center_crop_size=7):
+
+def get_patch_labels(patches: np.ndarray, image_ids: np.ndarray, db: dict, center_crop_size=7):
     """Produces binray labels for patches based on the intersection of the central patch part with a mask.
 
 
@@ -204,7 +205,7 @@ def get_patch_labels(patches: np.ndarray, image_ids: np.ndarray, db: INBreast_Da
     for pidx, patch in enumerate(patches):
         mask = cv2.imread(
             str(db.full_mask_path/f'{image_ids[pidx]}_lesion_mask.png'), cv2.IMREAD_GRAYSCALE)
-        
+
         p_center_y = patch[0][0] + (patch[0][1] - patch[0][0])//2
         p_center_x = patch[1][0] + (patch[1][1] - patch[1][0])//2
 
@@ -212,7 +213,7 @@ def get_patch_labels(patches: np.ndarray, image_ids: np.ndarray, db: INBreast_Da
         center_py2 = p_center_y + center_crop_size//2 + center_crop_size % 2
         center_px1 = p_center_x - center_crop_size//2
         center_px2 = p_center_x + center_crop_size//2 + center_crop_size % 2
-        
+
         crop_hs = center_crop_size//2
         crop_res = center_crop_size % 2
 
