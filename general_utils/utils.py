@@ -126,7 +126,7 @@ def integral_img(img_arr):
         for y in range(shape[0]):
             row_sum[y, x] = row_sum[y-1, x] + img_arr[y, x]
             int_img[y+1, x+1] = int_img[y+1, x-1+1] + row_sum[y, x]
-    return int_img.astype(np.int8)
+    return int_img
 
 
 @njit(cache=True)
@@ -143,7 +143,7 @@ def diagonal_integral_img(img_arr):
                 img_arr_[y, x+1]
             diag_int_img[y+2, 1] = diag_int_img[y+1, 2]
             diag_int_img[y+2, -1] = diag_int_img[y+1, -2]
-    return diag_int_img[1:-1, 1:-1].astype(np.int8)
+    return diag_int_img[1:-1, 1:-1]
 
 
 def get_center_bbox(pt1, pt2):
