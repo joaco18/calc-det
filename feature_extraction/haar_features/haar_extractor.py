@@ -108,13 +108,11 @@ class HaarFeatureExtractor:
             self.features_h = feature_instantiator(patch_size, 'hor', horizontal_feature_types)
         else:
             self.features_h = []
-            self.horizontal_features_types = None
         if rot:
             self.features_r = feature_instantiator(
                 patch_size, 'rot', rotated_feature_types=rotated_feature_types)
         else:
             self.features_r = []
-            self.rotated_features_types = None
         self.patch_size = patch_size
 
     def extract_features(
@@ -162,17 +160,18 @@ class HaarFeatureExtractor:
         if self.rot:
             self.diagintegral_image = utils.diagonal_integral_img(img)
 
-        features_values = np.empty(len(self.features_h) + len(self.features_r))
+        h_features_values = np.empty(len(self.features_h))
         if self.hor:
             for i, feature in enumerate(self.features_h):
-                features_values[i] = np.dot(
+                h_features_values[i] = np.dot(
                     self.integral_image[feature.coords_y, feature.coords_x],
                     feature.coeffs)
 
         # Generate the rotated features
+        r_features_values = np.empty(len(self.features_r))
         if self.rot:
             for i, feature in enumerate(self.features_r):
-                features_values[i] = np.dot(
+                r_features_values[i] = np.dot(
                     self.diagintegral_image[feature.coords_y, feature.coords_x],
                     feature.coeffs)
-        return features_values
+        return np.concatenate([h_features_values, r_features_values])
