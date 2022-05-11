@@ -232,6 +232,7 @@ def get_froc(froc_df:pd.DataFrame, db, center_crop_size=7):
             to consider while slicing the mask. Defaults to 7.
         
     Returns:
+    fpis, tprs, froc_aggr_all_df, total_mC
         tprs, fpis: arrays with from points values
         froc_aggr_all_df: pd.Dataframe with the same columns as froc_df
             plus additional column 'label', sorted by confidence score
@@ -310,4 +311,4 @@ def get_froc(froc_df:pd.DataFrame, db, center_crop_size=7):
         
         if fpi > 50:
             break
-    return tprs, fpis, froc_aggr_all_df, total_mC
+    return fpis, tprs, froc_aggr_all_df, total_mC

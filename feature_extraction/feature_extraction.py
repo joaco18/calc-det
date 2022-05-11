@@ -6,7 +6,7 @@ from pywt import dwt2
 from scipy.stats import kurtosis, skew
 from skimage.feature import greycomatrix, greycoprops, haar_like_feature_coord
 
-from general_utils.utils import min_max_norm, patch_coordinates_from_center, crop_patch_around_center
+from general_utils.utils import min_max_norm, patch_coordinates_from_center
 from feature_extraction.haar_features.haar_extractor import \
     extract_haar_feature_image_skimage, HaarFeatureExtractor
 
@@ -15,12 +15,13 @@ epsillon = np.finfo(float).eps
 
 wavelet_decomp_names = ['LL1', 'LH1', 'HL1', 'HH1', 'LL2', 'LH2', 'HL2', 'HH2']
 glcm_decompositions = ['LH1', 'HL1', 'HH1']
-skimage_glcm_features = ['energy', 'correlation', 'homogeneity', 'contrast', 'dissimilarity']
+skimage_glcm_features = ['energy', 'correlation',
+                         'homogeneity', 'contrast', 'dissimilarity']
 
 
 class CandidatesFeatureExtraction:
-    def __init__(self, patch_size: int, fos=True, gabor_params=None, wavelt_features=None,
-     haar_params=None, center_crop_size=7):
+    def __init__(self, patch_size: int, fos=True, gabor_params=None, wavelet_params=None,
+                 haar_params=None, center_crop_size=7):
         """Defines which features to extract
 
         Args:
@@ -28,7 +29,7 @@ class CandidatesFeatureExtraction:
                 used for FE
             fos (bool): whether to extract 17 first order statistics features
             gabor_params (dict): parameters for gabor feature bank
-            wavelt_features (dict): parameters for wavelt glcm f.e.
+            wavelet_params (dict): parameters for wavelt glcm f.e.
                 needs key 'angle' with a list of angles to calculate GLCMs for.
             haar_params (dict): parameters for haar features extractor
             center_crop_size (int): size of the patch center crop to consider
@@ -37,7 +38,7 @@ class CandidatesFeatureExtraction:
         self.patch_size = patch_size
         self.fos = fos
         self.gabor_params = gabor_params
-        self.wavelt_features = wavelt_features
+        self.wavelet_params = wavelet_params
         self.haar_params = haar_params
         self.center_crop_size = center_crop_size
 
@@ -63,7 +64,7 @@ class CandidatesFeatureExtraction:
                                            f'gabor_skew_{img_idx}',
                                            f'gabor_kurt_{img_idx}'])
 
-        if self.wavelt_features:
+        if self.wavelet_params:
             for decomp_name in wavelet_decomp_names:
                 self.feature_names.extend([f'patch_mean_{decomp_name}',
                                            f'patch_skew_{decomp_name}',
@@ -74,7 +75,7 @@ class CandidatesFeatureExtraction:
                                            f'patch_relsmooth_{decomp_name}'])
             for fn in skimage_glcm_features:
                 for dn in glcm_decompositions:
-                    for angle_idx in range(len(self.wavelt_features['angles'])):
+                    for angle_idx in range(len(self.wavelet_params['angles'])):
                         self.feature_names.append(
                             f'patch_glcm_{fn}_{dn}_{angle_idx}')
         # some debug features for now
@@ -101,7 +102,8 @@ class CandidatesFeatureExtraction:
         """
         # sample candidates to a given size if needed
         if fp2tp_sample is not None:
-            cand_idxs = self.split_sample_candidates(candidates, roi_mask, fp2tp_sample)
+            cand_idxs = self.split_sample_candidates(
+                candidates, roi_mask, fp2tp_sample)
             candidates = candidates[cand_idxs]
 
         image = min_max_norm(image, max_val=1.)
@@ -122,13 +124,15 @@ class CandidatesFeatureExtraction:
         for coords in candidates:
             # calculating canidate cropping patch coordinates
             patch_x1, patch_x2, patch_y1, patch_y2 = patch_coordinates_from_center(
-                (coords[0], coords[1]), image.shape, self.patch_size, use_padding=False
-            )
+                (coords[0], coords[1]), image.shape, self.patch_size, use_padding=False)
+            image_patch = image[patch_y1:patch_y2, patch_x1:patch_x2]
 
             # getting coordinates of the patch center crop
-            center_px1, center_px2, center_py1, center_py2 = crop_patch_around_center(
-                patch_x1, patch_x2, patch_y1, patch_y2, self.center_crop_size)
-            image_patch = image[patch_y1:patch_y2, patch_x1:patch_x2]
+
+            p_center_y = patch_y1 + (patch_y2 - patch_y1)//2
+            p_center_x = patch_x1 + (patch_x2 - patch_x1)//2
+            center_px1, center_px2, center_py1, center_py2 = patch_coordinates_from_center(
+                (p_center_x, p_center_y), image.shape, self.center_crop_size, use_padding=False)
 
             # extracting features
             features = []
@@ -143,7 +147,7 @@ class CandidatesFeatureExtraction:
                     gabored_images, patch_x1, patch_x2, patch_y1, patch_y2))
 
             # Wavelet and GLCM features
-            if self.wavelt_features:
+            if self.wavelet_params:
                 features.extend(self.get_wavelet_features(image_patch))
 
             features.append(coords)
@@ -154,7 +158,8 @@ class CandidatesFeatureExtraction:
             candidates_features.append(features)
         candidates_features = np.asarray(candidates_features, dtype=object)
         if self.haar_params:
-            candidates_features = np.concatenate([features_haar, candidates_features], axis=1)
+            candidates_features = np.concatenate(
+                [features_haar, candidates_features], axis=1)
         return candidates_features
 
     def split_sample_candidates(self, candidates, roi_mask, sample, minimum_fp: float = 0.2):
@@ -170,15 +175,16 @@ class CandidatesFeatureExtraction:
         TP_idxs = []
         FP_idxs = []
         for coords_idx, coords in enumerate(candidates):
-            # getting patch coordinates
             patch_x1, patch_x2, patch_y1, patch_y2 = patch_coordinates_from_center(
                 (coords[0], coords[1]), roi_mask.shape, self.patch_size, use_padding=False)
-            # getting patch centre crop coordinates
-            # TODO: I think this can be ommited, just using the self.center_crop_size in the funcition
-            # you just check a patch of 7x7 arround the center and no need to call this other function
-            center_px1, center_px2, center_py1, center_py2 = crop_patch_around_center(
-                patch_x1, patch_x2, patch_y1, patch_y2, self.center_crop_size)
 
+            # getting coordinates of the patch center crop
+
+            p_center_y = patch_y1 + (patch_y2 - patch_y1)//2
+            p_center_x = patch_x1 + (patch_x2 - patch_x1)//2
+            center_px1, center_px2, center_py1, center_py2 = patch_coordinates_from_center(
+                (p_center_x, p_center_y), roi_mask.shape, self.center_crop_size, use_padding=False)
+            
             if np.any(roi_mask[center_py1:center_py2, center_px1:center_px2] > 0):
                 TP_idxs.append(coords_idx)
             else:
@@ -186,9 +192,11 @@ class CandidatesFeatureExtraction:
         # check if required fraction of candidates is possible if not return the closest
         np.random.seed(20)
         sample_size = len(TP_idxs) * sample
-        sample_size = int(minimum_fp * len(FP_idxs)) if sample_size == 0 else sample_size
+        sample_size = int(minimum_fp * len(FP_idxs)
+                          ) if sample_size == 0 else sample_size
         if sample_size <= len(FP_idxs):
-            TP_idxs.extend(np.random.choice(FP_idxs, size=sample_size, replace=False))
+            TP_idxs.extend(np.random.choice(
+                FP_idxs, size=sample_size, replace=False))
         else:
             TP_idxs.extend(FP_idxs)
         return TP_idxs
@@ -216,9 +224,9 @@ class CandidatesFeatureExtraction:
 
         # Generate computational graph
         X = delayed(extract_haar_feature_image_skimage(
-                img, self.haar_params['skimage']['feature_type'],
-                self.haar_params['skimage']['feature_coord']
-            ) for img in images)
+            img, self.haar_params['skimage']['feature_type'],
+            self.haar_params['skimage']['feature_coord']
+        ) for img in images)
         # Compute the result
         X = np.array(X.compute(scheduler='processes'))
 
@@ -231,7 +239,8 @@ class CandidatesFeatureExtraction:
             self.haar_params['ours']['rotated_feature_types']
         )
         # Preallocate results holder
-        X_extension = np.empty((len(candidates), len(haarfe.features_h)+len(haarfe.features_r)))
+        X_extension = np.empty((len(candidates), len(
+            haarfe.features_h)+len(haarfe.features_r)))
 
         # Obtain the features
         for k, img in enumerate(images):
@@ -247,8 +256,10 @@ class CandidatesFeatureExtraction:
         # Adjust columns names if necessary
         if 'haar' not in self.feature_names[0]:
             haar_feature_names = [f'haar_{i}' for i in range(X.shape[1])]
-            our_haar_feature_names = [f'o_haar_{i}' for i in range(X_extension.shape[1])]
-            self.feature_names = haar_feature_names + our_haar_feature_names + self.feature_names
+            our_haar_feature_names = [
+                f'o_haar_{i}' for i in range(X_extension.shape[1])]
+            self.feature_names = haar_feature_names + \
+                our_haar_feature_names + self.feature_names
 
         # Merge our and skimage features
         X = np.concatenate([X, X_extension], axis=1)
@@ -356,17 +367,17 @@ class CandidatesFeatureExtraction:
             features (dict): dictionary containing all extracted features
         """
         eight_decomp = CandidatesFeatureExtraction.get_wavelet_decomp(patch)
-        wavelt_features = []
+        wavelet_params = []
 
         for idx, single_decomp in enumerate(eight_decomp):
-            wavelt_features.extend(
+            wavelet_params.extend(
                 CandidatesFeatureExtraction.wav_first_order(single_decomp, idx))
 
         for idx, single_decomp in enumerate(eight_decomp[1:4]):
-            wavelt_features.extend(
+            wavelet_params.extend(
                 CandidatesFeatureExtraction.wav_glcm_features(single_decomp, idx))
 
-        return np.asarray(wavelt_features)
+        return np.asarray(wavelet_params)
 
     @staticmethod
     def get_wavelet_decomp(patch: np.ndarray, wavelet_type='haar'):
