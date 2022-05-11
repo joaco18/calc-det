@@ -10,6 +10,7 @@ from tqdm import tqdm
 
 from metrics.metrics_utils import (evaluate_pairs_iou_appox,
                                    evaluate_pairs_iou_exact)
+import general_utils.utils as utils
 
 
 def circle_comparison(predicted_roi_circles, mask, return_counts=True):
@@ -142,7 +143,7 @@ def get_tp_fp_fn(
 
     # Get ground truth approximate circles
     radiuses = np.expand_dims(radiuses.astype(int), 1)
-    gt_centers = get_center_bboxes(lesion_bboxes)
+    gt_centers = utils.get_center_bboxes(lesion_bboxes)
     gt_circles = np.concatenate([gt_centers, radiuses], axis=1)
 
     # Get the distance tree
@@ -182,6 +183,24 @@ def get_tp_fp_fn(
     fp_idx[gt_idxs] = False
     fp = datapoints[fp_idx, :]
     return tp, fp, fn, gt_predicted, close_fp
+
+
+def label_candidates_center_criteria(
+    candidates: np.ndarray, roi_mask: np.ndarray, center_size: int
+):
+    """Label candidates as TP or FP. Is a window of "center_size" centered on the candidate inter
+    sects any gt roi in the rois mask, then is a TP else is FP"""
+    TP_idxs = []
+    FP_idxs = []
+    for coords_idx, coords in enumerate(candidates):
+        patch_x1, patch_x2, patch_y1, patch_y2 = utils.patch_coordinates_from_center(
+            (coords[0], coords[1]), roi_mask.shape, center_size, use_padding=False
+        )
+        if np.any(roi_mask[patch_y1:patch_y2, patch_x1:patch_x2] > 0):
+            TP_idxs.append(coords_idx)
+        else:
+            FP_idxs.append(coords_idx)
+    return candidates[TP_idxs], candidates[FP_idxs]
 
 
 def create_binary_mask_from_blobs(shape: tuple, blobs_x_y_sigma: list):
