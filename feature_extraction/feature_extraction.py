@@ -254,7 +254,7 @@ class CandidatesFeatureExtraction:
         img_min = image_patch.min()
         img_10th_perc = np.quantile(image_patch, q=0.1)
         img_90th_perc = np.quantile(image_patch, q=0.9)
-        img_max = np.quantile(image_patch, q=0.1)
+        img_max = np.max(image_patch)
         img_mean = np.mean(image_patch)
         img_median = np.median(image_patch)
         img_inter_quartile_range = np.quantile(

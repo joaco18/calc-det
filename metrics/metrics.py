@@ -1,8 +1,13 @@
+import imp
+import math
+from tqdm import tqdm
+
 import cv2
 import numpy as np
-import math
+import pandas as pd
+
 from scipy import spatial
-from general_utils.utils import get_center_bboxes
+from general_utils.utils import get_center_bboxes, patch_coordinates_from_center
 from metrics.metrics_utils import evaluate_pairs_iou_appox, evaluate_pairs_iou_exact
 
 
@@ -147,7 +152,7 @@ def get_tp_fp_fn(
     gt_idxs = np.arange(len(gt_circles))
 
     # Get the pairs closer than the required distance
-    pairs = tree.query_pairs(min_dist)
+    pairs = tree.query_pairs(max_dist)
     if len(pairs) == 0:
         fn = gt_circles
         fp = detections
@@ -194,3 +199,94 @@ def cal_det_se(no_tp, no_fn):
 
 def fp_per_unit_area(image_shape, no_fp):
     return no_fp/(image_shape[0] * image_shape[1] * (0.070**2)/100)
+
+
+def get_froc(froc_df:pd.DataFrame, db, center_crop_size=7):
+    """Get froc plot points
+
+    Args:
+        froc_df (pd.DataFrame):  containing patches classification information,
+            with columns 'img_id', 'patch_coordinates', 'confidence'
+        db (INBreast_Dataset): used to retrieve image mask based on image_id
+        center_crop_size (int, optional): _description_. Defaults to 7.
+        
+    Returns:
+        tprs, fpis: arrays with from points values
+        froc_aggr_all_df: pd.Dataframe with the same columns as froc_df
+            plus additional column 'label', sorted by confidence score
+            and with the reduced number of patches in case of multiple
+            patches overlapping same rois with the highest confidence patch kept
+        total_mC (int): number of all analyzed ROIs from the mask
+        
+    """
+
+    # track highest confidence patches that overlap image rois
+    froc_aggr_all = []
+    total_mC = 0
+    # count total FN
+    FN = []
+    
+    # 1. Aggregating patches prediction and creating a mapping "TP, score"
+    for img_id in tqdm(froc_df.img_id.unique()):
+        img_index = db.df[db.df.img_id == img_id].index.values[0]
+
+        lesion_mask = db[img_index]['lesion_mask']
+        total_mC  = total_mC + len(np.unique(lesion_mask)) - 1
+        image_froc_df = froc_df[froc_df.img_id == img_id]
+        
+        fp_patches = []
+        tp_patches = []
+        # iterating over patches and checking if the mask instersection is not zero
+        tp_rois_dict = {}
+        for patch_idx, patch in enumerate(image_froc_df.patch_coordinates.values):
+            (px1, px2), (py1, py2) = patch
+            
+            # getting centre crop of the patch            
+            p_center_y = py1 + (py2 - py1)//2
+            p_center_x = px1 + (px2 - px1)//2
+            center_px1, center_px2, center_py1, center_py2  = patch_coordinates_from_center((p_center_y, p_center_x), lesion_mask.shape, center_crop_size, use_padding=False)
+            
+            mask_rois_in_patch = set(lesion_mask[center_py1:center_py2, center_px1:center_px2].ravel()).difference(set([0]))
+
+            if len(mask_rois_in_patch) == 0:
+                patch_fp_dict =  image_froc_df.iloc[patch_idx].to_dict()
+                patch_fp_dict['label'] = 'FP'
+                fp_patches.append(patch_fp_dict)
+            else:
+                for mask_roi in mask_rois_in_patch:
+                            
+                    if mask_roi not in tp_rois_dict.keys():
+                        # saving information about matched to roi patch
+                        tp_rois_dict[mask_roi] = image_froc_df.iloc[patch_idx].to_dict()
+                        tp_rois_dict[mask_roi]['label'] = 'TP'
+                    else:
+                        # rewriting match patch to roi if it has higher confidence
+                        if image_froc_df.iloc[patch_idx]['confidence'] > tp_rois_dict[mask_roi]['confidence']:
+                            tp_rois_dict[mask_roi] = image_froc_df.iloc[patch_idx].to_dict()
+                            tp_rois_dict[mask_roi]['label'] = 'TP'
+
+        tp_patches.extend(tp_rois_dict.values())
+        froc_aggr_all.extend(fp_patches)
+        froc_aggr_all.extend(tp_patches)
+        FN.extend(set(lesion_mask.ravel()).difference(set([0])).difference(set(tp_rois_dict.keys())))
+    
+    # 2. Sorting the mapping
+    froc_aggr_all_df = pd.DataFrame(froc_aggr_all)
+    froc_aggr_all_df = froc_aggr_all_df.sort_values(by='confidence', ascending=False) 
+    
+    # actually calculating curve points
+    tprs = []
+    fpis = []
+    for i in range(1, len(froc_aggr_all_df)):
+        df_slice = froc_aggr_all_df.label.values[:i]
+        tp_count = (df_slice == 'TP').sum()
+        fp_count = (df_slice == 'FP').sum()
+        tpr = tp_count/(tp_count + len(FN))
+        fpi = fp_count/(len(froc_df.img_id.unique()))
+        
+        tprs.append(tpr)
+        fpis.append(fpi)
+        
+        if fpi > 50:
+            break
+    return tprs, fpis, froc_aggr_all_df, total_mC
