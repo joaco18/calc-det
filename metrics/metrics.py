@@ -1,14 +1,15 @@
-import imp
 import math
-from tqdm import tqdm
 
 import cv2
 import numpy as np
 import pandas as pd
-
+from general_utils.utils import (get_center_bboxes,
+                                 patch_coordinates_from_center)
 from scipy import spatial
-from general_utils.utils import get_center_bboxes, patch_coordinates_from_center
-from metrics.metrics_utils import evaluate_pairs_iou_appox, evaluate_pairs_iou_exact
+from tqdm import tqdm
+
+from metrics.metrics_utils import (evaluate_pairs_iou_appox,
+                                   evaluate_pairs_iou_exact)
 
 
 def circle_comparison(predicted_roi_circles, mask, return_counts=True):
@@ -208,7 +209,8 @@ def get_froc(froc_df:pd.DataFrame, db, center_crop_size=7):
         froc_df (pd.DataFrame):  containing patches classification information,
             with columns 'img_id', 'patch_coordinates', 'confidence'
         db (INBreast_Dataset): used to retrieve image mask based on image_id
-        center_crop_size (int, optional): _description_. Defaults to 7.
+        center_crop_size (int, optional): patch center crop size 
+            to consider while slicing the mask. Defaults to 7.
         
     Returns:
         tprs, fpis: arrays with from points values
