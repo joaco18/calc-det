@@ -6,7 +6,7 @@ from pywt import dwt2
 from scipy.stats import kurtosis, skew
 from skimage.feature import greycomatrix, greycoprops, haar_like_feature_coord
 
-from general_utils.utils import min_max_norm, patch_coordinates_from_center
+from general_utils.utils import min_max_norm, patch_coordinates_from_center, crop_patch_around_center
 from feature_extraction.haar_features.haar_extractor import \
     extract_haar_feature_image_skimage, HaarFeatureExtractor
 
@@ -19,7 +19,8 @@ skimage_glcm_features = ['energy', 'correlation', 'homogeneity', 'contrast', 'di
 
 
 class CandidatesFeatureExtraction:
-    def __init__(self, patch_size: int, fos=True, gabor_params=None, wavelt_features=None, haar_params=None, center_crop_size=7):
+    def __init__(self, patch_size: int, fos=True, gabor_params=None, wavelt_features=None,
+     haar_params=None, center_crop_size=7):
         """Defines which features to extract
 
         Args:
@@ -172,7 +173,7 @@ class CandidatesFeatureExtraction:
             # getting patch coordinates
             patch_x1, patch_x2, patch_y1, patch_y2 = patch_coordinates_from_center(
                 (coords[0], coords[1]), roi_mask.shape, self.patch_size, use_padding=False)
-            # getting patch centre crop coordinates 
+            # getting patch centre crop coordinates
             # TODO: I think this can be ommited, just using the self.center_crop_size in the funcition
             # you just check a patch of 7x7 arround the center and no need to call this other function
             center_px1, center_px2, center_py1, center_py2 = crop_patch_around_center(
@@ -183,6 +184,7 @@ class CandidatesFeatureExtraction:
             else:
                 FP_idxs.append(coords_idx)
         # check if required fraction of candidates is possible if not return the closest
+        np.random.seed(20)
         sample_size = len(TP_idxs) * sample
         sample_size = int(minimum_fp * len(FP_idxs)) if sample_size == 0 else sample_size
         if sample_size <= len(FP_idxs):
