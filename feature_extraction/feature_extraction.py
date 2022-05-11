@@ -174,8 +174,9 @@ class CandidatesFeatureExtraction:
             patch_x1, patch_x2, patch_y1, patch_y2 = patch_coordinates_from_center(
                 (coords[0], coords[1]), roi_mask.shape, self.patch_size, use_padding=False)
             # getting patch centre crop coordinates
-            # TODO: I think this can be ommited, just using the self.center_crop_size in the funcition
-            # you just check a patch of 7x7 arround the center and no need to call this other function
+            # TODO: I think this can be ommited, just using the self.center_crop_size in
+            # the funcition you just check a patch of 7x7 arround the center and no need
+            # to call this other function
             center_px1, center_px2, center_py1, center_py2 = crop_patch_around_center(
                 patch_x1, patch_x2, patch_y1, patch_y2, self.center_crop_size)
 
@@ -230,6 +231,8 @@ class CandidatesFeatureExtraction:
             self.haar_params['ours']['horizontal_feature_types'],
             self.haar_params['ours']['rotated_feature_types']
         )
+        self.our_haar_feature_types_h = haarfe.features_h
+        self.our_haar_feature_types_r = haarfe.features_r
         # Preallocate results holder
         X_extension = np.empty((len(candidates), len(haarfe.features_h)+len(haarfe.features_r)))
 
@@ -242,13 +245,15 @@ class CandidatesFeatureExtraction:
             haar_like_feature_coord(
                 width=self.haar_params['patch_size'], height=self.haar_params['patch_size'],
                 feature_type=['type-2-x', 'type-2-y', 'type-3-x', 'type-3-y', 'type-4'])
-        self.our_haar_feature_types = haarfe.features_h + haarfe.features_r
 
         # Adjust columns names if necessary
         if 'haar' not in self.feature_names[0]:
             haar_feature_names = [f'haar_{i}' for i in range(X.shape[1])]
-            our_haar_feature_names = [f'o_haar_{i}' for i in range(X_extension.shape[1])]
-            self.feature_names = haar_feature_names + our_haar_feature_names + self.feature_names
+            our_h_haar_feature_names = [f'hor_haar_{i}' for i in range(len(haarfe.features_h))]
+            our_r_haar_feature_names = [f'rot_haar_{i}' for i in range(len(haarfe.features_r))]
+            self.feature_names = \
+                haar_feature_names + our_h_haar_feature_names + \
+                our_r_haar_feature_names + self.feature_names
 
         # Merge our and skimage features
         X = np.concatenate([X, X_extension], axis=1)
