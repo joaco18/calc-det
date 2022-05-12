@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import math
 
 from general_utils.utils import min_max_norm
+from sklearn.metrics import auc
 
 
 def simple_im_show(img, figsize=(10, 10)):
@@ -134,4 +135,16 @@ def plot_gabor_filters(filters, plots_columns=3):
             axs[c,r].imshow(filters[ax_idx], cmap='gray')
         axs[c,r].set_axis_off()
     
+    plt.show()
+    
+    
+    
+def plot_froc(fpis, tprs, total_mC, label=''):
+    plt.figure(figsize=(8, 8))
+    plt.xlabel('FPpI')
+    plt.ylabel(f'TPR ({total_mC}) mC')
+    plt.title('FROC curve')
+    plt.plot(fpis, tprs)
+    plt.ylim((0, 1))
+    plt.legend([f"{label} AUC: {auc(fpis, tprs)}"])
     plt.show()

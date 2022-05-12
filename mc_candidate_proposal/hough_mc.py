@@ -2,7 +2,7 @@ import cv2
 import multiprocessing as mp
 import numpy as np
 
-from general_utils.utils import crop_center_coords, min_max_norm, sobel_gradient
+from general_utils.utils import patch_coordinates_from_center, min_max_norm, sobel_gradient
 from general_utils.dehazing import dehaze
 from pathlib import Path
 from skimage import restoration
@@ -175,8 +175,8 @@ class HoughCalcificationDetection:
 
         cx, cy, cr = circle
         # get coordinates of 200*200 cropped patch aroung circle
-        x1, x2, y1, y2 = crop_center_coords(cx, cy, self.processed_image,
-                                            patch_size=patch_size)
+        x1, x2, y1, y2 = patch_coordinates_from_center((cx, cy), self.processed_image.shape, patch_size=patch_size*2, use_padding=False)
+
         h2_normalized_patch = self.processed_image[y1:y2, x1:x2].copy()
 
         image_circle_mask = cv2.circle(np.zeros(self.processed_image.shape),

@@ -169,10 +169,10 @@ def evaluate_pairs_iou_appox(
     """
     fp_idx, tp_idx, detected_gts = [], [], []
     for i, j in pairs:
-        if ((i not in gt_idxs) and (j not in gt_idxs)):
+        if ((i not in gt_idxs) and (j not in gt_idxs)) or (i in gt_idxs and j in gt_idxs):
             continue
         gt_idx = i if ((i in gt_idxs) and (j not in gt_idxs)) else j
-        det_idx = j if (i in gt_idxs) and (j not in gt_idxs) else i
+        det_idx = j if ((i in gt_idxs) and (j not in gt_idxs)) else i
 
         gt = datapoints[gt_idx]
         det = datapoints[det_idx]
@@ -182,7 +182,7 @@ def evaluate_pairs_iou_appox(
         r1, r2 = gt[-1], det[-1]
 
         # Don't check overlaping
-        if min_iou >= 1:
+        if min_iou > 1:
             fp_idx.append(det_idx)
         elif min_iou == 0:
             tp_idx.append(det_idx)
