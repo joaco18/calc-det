@@ -4,7 +4,7 @@ import numpy as np
 from dask import delayed
 from pywt import dwt2
 from scipy.stats import kurtosis, skew
-from skimage.feature import greycomatrix, greycoprops, haar_like_feature_coord
+from skimage.feature import graycomatrix, graycoprops, haar_like_feature_coord
 
 from general_utils.utils import min_max_norm, patch_coordinates_from_center, crop_patch_around_center
 from feature_extraction.haar_features.haar_extractor import \
@@ -162,13 +162,13 @@ class CandidatesFeatureExtraction:
 
     def split_sample_candidates(self, candidates, roi_mask, sample, minimum_fp: float = 0.2):
         """Samples given candidates list to obtain a given proportion of TPxFP in it.
-        First selects all TP canidates and then randomly sampled a required number of FP.
+        First selects all TP canidates and then randomly samples a required number of FP.
         If the requiered number of FP is larger than the ones available, then return all
         of them, if there are no TP among the candidates return 20% of FP.
-        To the define the label of the candidate use a center window of
-        self.labeling_center_region_size, size arround the center.
+        Then define the label of the candidate use a center window of
+        self.labeling_center_region_size, size around the center.
         Args:
-            minimum_fp (float): if no TP were deetected, still sample 20% of the FP of that case.
+            minimum_fp (float): if no TP were detected, still sample 20% of the FP of that case.
         """
         TP_idxs = []
         FP_idxs = []
@@ -444,12 +444,12 @@ class CandidatesFeatureExtraction:
             glcm_features (dict): dictionary containing glcm features
         """
 
-        single_decomp_glcm = greycomatrix(min_max_norm(
+        single_decomp_glcm = graycomatrix(min_max_norm(
             single_decomp, max_val=256).astype(np.uint8), [2], [0], normed=True)
 
         glcm_features_1 = []
         for feature_name in skimage_glcm_features:
-            feature_results = greycoprops(
+            feature_results = graycoprops(
                 single_decomp_glcm, prop=feature_name)
             for fv in feature_results.ravel():
                 glcm_features_1.append(fv)
