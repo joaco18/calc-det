@@ -80,7 +80,8 @@ class CandidatesFeatureExtraction:
         # some debug features for now
         self.feature_names.extend(['candidate_coordinates',
                                    'patch_coordinates',
-                                   'center_patch_mask_intersection'])
+                                   'center_patch_mask_intersection',
+                                   'whole_patch_intersection'])
 
     def extract_features(
             self, candidates: np.ndarray, image: np.ndarray,
@@ -154,6 +155,8 @@ class CandidatesFeatureExtraction:
             # cropping center of the patch now
             features.append(
                 (roi_mask[center_py1:center_py2, center_px1:center_px2] > 0).sum())
+            features.append(
+                (roi_mask[patch_y1:patch_y2, patch_x1:patch_x2] > 0).sum())
             candidates_features.append(features)
         candidates_features = np.asarray(candidates_features, dtype=object)
         if self.haar_params:
@@ -187,7 +190,9 @@ class CandidatesFeatureExtraction:
             if np.any(roi_mask[center_py1:center_py2, center_px1:center_px2] > 0):
                 TP_idxs.append(coords_idx)
             else:
-                FP_idxs.append(coords_idx)
+                # discard an intersection outside the center crop
+                if not np.any(roi_mask[patch_y1:patch_y2,patch_x1:patch_x2] > 0):
+                    FP_idxs.append(coords_idx)
         # check if required fraction of candidates is possible if not return the closest
         np.random.seed(20)
         sample_size = len(TP_idxs) * sample
