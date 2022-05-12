@@ -6,7 +6,7 @@ from pywt import dwt2
 from scipy.stats import kurtosis, skew
 from skimage.feature import greycomatrix, greycoprops, haar_like_feature_coord
 
-from general_utils.utils import min_max_norm, patch_coordinates_from_center
+from general_utils.utils import min_max_norm, patch_coordinates_from_center, crop_patch_around_center
 from feature_extraction.haar_features.haar_extractor import \
     extract_haar_feature_image_skimage, HaarFeatureExtractor
 
@@ -15,8 +15,7 @@ epsillon = np.finfo(float).eps
 
 wavelet_decomp_names = ['LL1', 'LH1', 'HL1', 'HH1', 'LL2', 'LH2', 'HL2', 'HH2']
 glcm_decompositions = ['LH1', 'HL1', 'HH1']
-skimage_glcm_features = ['energy', 'correlation',
-                         'homogeneity', 'contrast', 'dissimilarity']
+skimage_glcm_features = ['energy', 'correlation', 'homogeneity', 'contrast', 'dissimilarity']
 
 
 class CandidatesFeatureExtraction:
@@ -158,8 +157,7 @@ class CandidatesFeatureExtraction:
             candidates_features.append(features)
         candidates_features = np.asarray(candidates_features, dtype=object)
         if self.haar_params:
-            candidates_features = np.concatenate(
-                [features_haar, candidates_features], axis=1)
+            candidates_features = np.concatenate([features_haar, candidates_features], axis=1)
         return candidates_features
 
     def split_sample_candidates(self, candidates, roi_mask, sample, minimum_fp: float = 0.2):
@@ -175,6 +173,7 @@ class CandidatesFeatureExtraction:
         TP_idxs = []
         FP_idxs = []
         for coords_idx, coords in enumerate(candidates):
+            # getting patch coordinates
             patch_x1, patch_x2, patch_y1, patch_y2 = patch_coordinates_from_center(
                 (coords[0], coords[1]), roi_mask.shape, self.patch_size, use_padding=False)
 
@@ -238,9 +237,10 @@ class CandidatesFeatureExtraction:
             self.haar_params['ours']['horizontal_feature_types'],
             self.haar_params['ours']['rotated_feature_types']
         )
+        self.our_haar_feature_types_h = haarfe.features_h
+        self.our_haar_feature_types_r = haarfe.features_r
         # Preallocate results holder
-        X_extension = np.empty((len(candidates), len(
-            haarfe.features_h)+len(haarfe.features_r)))
+        X_extension = np.empty((len(candidates), len(haarfe.features_h)+len(haarfe.features_r)))
 
         # Obtain the features
         for k, img in enumerate(images):
@@ -251,15 +251,15 @@ class CandidatesFeatureExtraction:
             haar_like_feature_coord(
                 width=self.haar_params['patch_size'], height=self.haar_params['patch_size'],
                 feature_type=['type-2-x', 'type-2-y', 'type-3-x', 'type-3-y', 'type-4'])
-        self.our_haar_feature_types = haarfe.features_h + haarfe.features_r
 
         # Adjust columns names if necessary
         if 'haar' not in self.feature_names[0]:
             haar_feature_names = [f'haar_{i}' for i in range(X.shape[1])]
-            our_haar_feature_names = [
-                f'o_haar_{i}' for i in range(X_extension.shape[1])]
-            self.feature_names = haar_feature_names + \
-                our_haar_feature_names + self.feature_names
+            our_h_haar_feature_names = [f'hor_haar_{i}' for i in range(len(haarfe.features_h))]
+            our_r_haar_feature_names = [f'rot_haar_{i}' for i in range(len(haarfe.features_r))]
+            self.feature_names = \
+                haar_feature_names + our_h_haar_feature_names + \
+                our_r_haar_feature_names + self.feature_names
 
         # Merge our and skimage features
         X = np.concatenate([X, X_extension], axis=1)

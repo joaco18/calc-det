@@ -60,7 +60,7 @@ def patch_coordinates_from_center(
     image: np.ndarray = None, mask: np.ndarray = None
 ):
     """Returns coordinates of the patch, cropping the image at center location
-    with a given patch size. If the center is in the left or upper border shift 
+    with a given patch size. If the center is in the left or upper border shift
     the center and crop fixed size patch. If the center is in the left bottom border
     do the same if use_padding=False, or pad with zeros and crop
 
@@ -82,7 +82,7 @@ def patch_coordinates_from_center(
     if use_padding:
         assert (image is not None) and (mask is not None), \
             'If padding method is used, image and mask should be provided,' \
-                ' utils.patch_coordinates_from_center'
+            ' utils.patch_coordinates_from_center'
     patch_half_size = patch_size // 2
 
     x1 = center[0] - patch_half_size
@@ -182,10 +182,10 @@ def crop_patch_around_center(patch_x1, patch_x2, patch_y1, patch_y2, center_crop
     center_px2 = p_center_x + center_crop_size//2 + center_crop_size % 2
     return center_px1, center_px2, center_py1, center_py2
 
+
 def get_patch_labels(patches: np.ndarray, image_ids: np.ndarray, db, center_crop_size=7):
-    """Produces binray labels for patches based on the intersection of the central patch part with a mask.
-
-
+    """Produces binray labels for patches based on the intersection of
+        the central patch part with a mask.
     Args:
         patches (np.ndarray): Array of tuples of tuples with patch coordinates
             (patch_y1, patch_y2), (patch_x1, patch_x2)
@@ -202,7 +202,7 @@ def get_patch_labels(patches: np.ndarray, image_ids: np.ndarray, db, center_crop
     for pidx, patch in enumerate(patches):
         mask = cv2.imread(
             str(db.full_mask_path/f'{image_ids[pidx]}_lesion_mask.png'), cv2.IMREAD_GRAYSCALE)
-        
+
         p_center_y = patch[0][0] + (patch[0][1] - patch[0][0])//2
         p_center_x = patch[1][0] + (patch[1][1] - patch[1][0])//2
 
@@ -210,7 +210,7 @@ def get_patch_labels(patches: np.ndarray, image_ids: np.ndarray, db, center_crop
         center_py2 = p_center_y + center_crop_size//2 + center_crop_size % 2
         center_px1 = p_center_x - center_crop_size//2
         center_px2 = p_center_x + center_crop_size//2 + center_crop_size % 2
-        
+
         crop_hs = center_crop_size//2
         crop_res = center_crop_size % 2
 
