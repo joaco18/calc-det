@@ -545,7 +545,7 @@ class INBreast_Dataset(Dataset):
 
             # Get the coordinates of the patch centered in the lesion
             patch_x1, patch_x2, patch_y1, patch_y2, image, mask = \
-                utils.patch_coordinates_from_center(
+                utils.patch_coordinates_from_center_w_padding(
                     roi_center, image_size, self.patch_size,
                     use_padding=True, image=image, mask=mask
                 )
