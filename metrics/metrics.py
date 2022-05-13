@@ -253,6 +253,7 @@ def get_froc(froc_df:pd.DataFrame, db, center_crop_size=7):
         img_index = db.df[db.df.img_id == img_id].index.values[0]
 
         lesion_mask = db[img_index]['lesion_mask']
+        # lesion_mask_full = cv2.imread(str(db.full_mask_path/f'{img_id}_lesion_mask.png'), cv2.IMREAD_GRAYSCALE)
         total_mC  = total_mC + len(np.unique(lesion_mask)) - 1
         image_froc_df = froc_df[froc_df.img_id == img_id]
         

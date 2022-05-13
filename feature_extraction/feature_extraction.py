@@ -58,6 +58,8 @@ class CandidatesFeatureExtraction:
         if self.gabor_params:
             for img_idx in range(self.gabor_params['scale']*self.gabor_params['orientation']):
                 self.feature_names.extend([f'gabor_energy_{img_idx}',
+                                           f'gabor_max_{img_idx}',
+                                           f'gabor_min_{img_idx}',
                                            f'gabor_mean_{img_idx}',
                                            f'gabor_std_{img_idx}',
                                            f'gabor_skew_{img_idx}',
@@ -338,13 +340,15 @@ class CandidatesFeatureExtraction:
         Args:
             gabored_images (list): list of images filtered with Gabor kernels
         Returns:
-            np.ndarray: of 4_features*n_gabored_images 
+            np.ndarray: of 6_features*n_gabored_images 
         """
         features = []
         for filtered_image in gabored_images:
             img_patch = filtered_image[patch_y1:patch_y2, patch_x1:patch_x2]
 
             features.extend([(img_patch**2).sum(),
+                             np.max(img_patch),
+                             np.min(img_patch),
                              np.mean(img_patch),
                              np.std(img_patch),
                              skew(img_patch.ravel()),
@@ -446,8 +450,8 @@ class CandidatesFeatureExtraction:
         """
 
 
-        single_decomp_glcm = graycomatrix(min_max_norm(
-            single_decomp, max_val=256).astype(np.uint8), [2], [0], normed=True)
+        single_decomp_glcm = graycomatrix(utils.min_max_norm(
+            single_decomp, max_val=255).astype(np.uint8), [2], [0], normed=True)
 
         glcm_features_1 = []
         for feature_name in skimage_glcm_features:
