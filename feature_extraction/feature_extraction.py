@@ -4,7 +4,7 @@ import numpy as np
 from dask import delayed
 from pywt import dwt2
 from scipy.stats import kurtosis, skew
-from skimage.feature import greycomatrix, greycoprops, haar_like_feature_coord
+from skimage.feature import graycomatrix, graycoprops, haar_like_feature_coord
 
 import general_utils.utils as utils
 from feature_extraction.haar_features.haar_extractor import \
@@ -80,7 +80,8 @@ class CandidatesFeatureExtraction:
         # some debug features for now
         self.feature_names.extend(['candidate_coordinates',
                                    'patch_coordinates',
-                                   'center_patch_mask_intersection'])
+                                   'center_patch_mask_intersection',
+                                   'whole_patch_intersection'])
 
     def extract_features(
             self, candidates: np.ndarray, image: np.ndarray,
@@ -154,6 +155,8 @@ class CandidatesFeatureExtraction:
             # cropping center of the patch now
             features.append(
                 (roi_mask[center_py1:center_py2, center_px1:center_px2] > 0).sum())
+            features.append(
+                (roi_mask[patch_y1:patch_y2, patch_x1:patch_x2] > 0).sum())
             candidates_features.append(features)
         candidates_features = np.asarray(candidates_features, dtype=object)
         if self.haar_params:
@@ -162,13 +165,13 @@ class CandidatesFeatureExtraction:
 
     def split_sample_candidates(self, candidates, roi_mask, sample, minimum_fp: float = 0.2):
         """Samples given candidates list to obtain a given proportion of TPxFP in it.
-        First selects all TP canidates and then randomly sampled a required number of FP.
+        First selects all TP canidates and then randomly samples a required number of FP.
         If the requiered number of FP is larger than the ones available, then return all
         of them, if there are no TP among the candidates return 20% of FP.
-        To the define the label of the candidate use a center window of
-        self.labeling_center_region_size, size arround the center.
+        Then define the label of the candidate use a center window of
+        self.labeling_center_region_size, size around the center.
         Args:
-            minimum_fp (float): if no TP were deetected, still sample 20% of the FP of that case.
+            minimum_fp (float): if no TP were detected, still sample 20% of the FP of that case.
         """
         TP_idxs = []
         FP_idxs = []
@@ -187,7 +190,9 @@ class CandidatesFeatureExtraction:
             if np.any(roi_mask[center_py1:center_py2, center_px1:center_px2] > 0):
                 TP_idxs.append(coords_idx)
             else:
-                FP_idxs.append(coords_idx)
+                # discard an intersection outside the center crop
+                if not np.any(roi_mask[patch_y1:patch_y2,patch_x1:patch_x2] > 0):
+                    FP_idxs.append(coords_idx)
         # check if required fraction of candidates is possible if not return the closest
         np.random.seed(20)
         sample_size = len(TP_idxs) * sample
@@ -440,12 +445,13 @@ class CandidatesFeatureExtraction:
             glcm_features (dict): dictionary containing glcm features
         """
 
-        single_decomp_glcm = greycomatrix(utils.min_max_norm(
+
+        single_decomp_glcm = graycomatrix(min_max_norm(
             single_decomp, max_val=256).astype(np.uint8), [2], [0], normed=True)
 
         glcm_features_1 = []
         for feature_name in skimage_glcm_features:
-            feature_results = greycoprops(
+            feature_results = graycoprops(
                 single_decomp_glcm, prop=feature_name)
             for fv in feature_results.ravel():
                 glcm_features_1.append(fv)
