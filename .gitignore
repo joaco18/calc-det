@@ -12,6 +12,7 @@ stolen
 stolen/
 notebooks/data_parsing_dev.ipynb
 notebooks/debug_dataset.ipynb
+notebooks/show_haar.ipynb
 models/HDoGDetector/temp_main.py
 models/general_utils/
 data/Bria/
