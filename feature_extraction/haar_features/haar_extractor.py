@@ -100,17 +100,25 @@ class HaarFeatureExtractor:
     def __init__(
         self, patch_size: int = WINDOW_SIZE,
         horizontal: bool = True, rot: bool = True,
-        horizontal_feature_types: list = None, rotated_feature_types: list = None
+        horizontal_feature_types: list = None, rotated_feature_types: list = None,
+        horizontal_features_selection: list = None, rotated_features_selection: list = None
     ):
         self.hor = horizontal
         self.rot = rot
         if horizontal:
-            self.features_h = feature_instantiator(patch_size, 'hor', horizontal_feature_types)
+            if horizontal_features_selection is not None:
+                self.features_h = horizontal_features_selection
+            else:
+                self.features_h = \
+                    feature_instantiator(patch_size, 'hor', horizontal_feature_types)
         else:
             self.features_h = []
         if rot:
-            self.features_r = feature_instantiator(
-                patch_size, 'rot', rotated_feature_types=rotated_feature_types)
+            if rotated_features_selection is not None:
+                self.features_r = rotated_features_selection
+            else:
+                self.features_r = feature_instantiator(
+                    patch_size, 'rot', rotated_feature_types=rotated_feature_types)
         else:
             self.features_r = []
         self.patch_size = patch_size
@@ -133,7 +141,7 @@ class HaarFeatureExtractor:
             # Get the patch arround center
             x1, _, y1, _ = utils.patch_coordinates_from_center(
                 center=(location[0], location[1]), image_shape=image.shape,
-                patch_size=self.patch_size, use_padding=False)
+                patch_size=self.patch_size)
 
             # # Generate the horizontal features
             features_values = np.empty(len(self.features_h) + len(self.features_r))

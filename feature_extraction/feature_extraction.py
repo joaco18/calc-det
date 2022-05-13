@@ -6,7 +6,7 @@ from pywt import dwt2
 from scipy.stats import kurtosis, skew
 from skimage.feature import graycomatrix, graycoprops, haar_like_feature_coord
 
-from general_utils.utils import min_max_norm, patch_coordinates_from_center, crop_patch_around_center
+import general_utils.utils as utils
 from feature_extraction.haar_features.haar_extractor import \
     extract_haar_feature_image_skimage, HaarFeatureExtractor
 
@@ -88,14 +88,14 @@ class CandidatesFeatureExtraction:
             roi_mask: np.ndarray, fp2tp_sample=None):
         """Extracts features from image patches cropped around given candidates.
         Args:
-            candidates (np.ndarray): of dtype=int containing candidats for FE of shape (n_candidates, 3).
-                Second axis should contain (x_coord, y_coord, radius).
+            candidates (np.ndarray): of dtype=int containing candidats for FE of shape
+                (n_candidates, 3). Second axis should contain (x_coord, y_coord, radius).
             image (np.ndarray): 2D image used for cropping and FE
             roi_mask (np.ndarray): true rois mask
             fp2tp_sample (int, optional): number of FP candidates to sample for each TP candidate.
-                If not None, total number of sampled candidates will be len(TP_candidates)*(fp2tp_sample + 1).
-                Defaults to None which means no sampling is performed and features for all candidates are
-                extracted.
+                If not None, total number of sampled candidates will be
+                len(TP_candidates)*(fp2tp_sample + 1). Defaults to None which means no sampling
+                is performed and features for all candidates are extracted.
 
         Returns:
             np.array: rows candidates, columns features
@@ -106,7 +106,7 @@ class CandidatesFeatureExtraction:
                 candidates, roi_mask, fp2tp_sample)
             candidates = candidates[cand_idxs]
 
-        image = min_max_norm(image, max_val=1.)
+        image = utils.min_max_norm(image, max_val=1.)
         candidates_features = []
 
         if self.gabor_params:
@@ -123,16 +123,16 @@ class CandidatesFeatureExtraction:
         # you want a patch.
         for coords in candidates:
             # calculating canidate cropping patch coordinates
-            patch_x1, patch_x2, patch_y1, patch_y2 = patch_coordinates_from_center(
-                (coords[0], coords[1]), image.shape, self.patch_size, use_padding=False)
+            patch_x1, patch_x2, patch_y1, patch_y2 = utils.patch_coordinates_from_center(
+                (coords[0], coords[1]), image.shape, self.patch_size)
             image_patch = image[patch_y1:patch_y2, patch_x1:patch_x2]
 
             # getting coordinates of the patch center crop
 
             p_center_y = patch_y1 + (patch_y2 - patch_y1)//2
             p_center_x = patch_x1 + (patch_x2 - patch_x1)//2
-            center_px1, center_px2, center_py1, center_py2 = patch_coordinates_from_center(
-                (p_center_x, p_center_y), image.shape, self.center_crop_size, use_padding=False)
+            center_px1, center_px2, center_py1, center_py2 = utils.patch_coordinates_from_center(
+                (p_center_x, p_center_y), image.shape, self.center_crop_size)
 
             # extracting features
             features = []
@@ -177,16 +177,16 @@ class CandidatesFeatureExtraction:
         FP_idxs = []
         for coords_idx, coords in enumerate(candidates):
             # getting patch coordinates
-            patch_x1, patch_x2, patch_y1, patch_y2 = patch_coordinates_from_center(
-                (coords[0], coords[1]), roi_mask.shape, self.patch_size, use_padding=False)
+            patch_x1, patch_x2, patch_y1, patch_y2 = utils.patch_coordinates_from_center(
+                (coords[0], coords[1]), roi_mask.shape, self.patch_size)
 
             # getting coordinates of the patch center crop
 
             p_center_y = patch_y1 + (patch_y2 - patch_y1)//2
             p_center_x = patch_x1 + (patch_x2 - patch_x1)//2
-            center_px1, center_px2, center_py1, center_py2 = patch_coordinates_from_center(
-                (p_center_x, p_center_y), roi_mask.shape, self.center_crop_size, use_padding=False)
-            
+            center_px1, center_px2, center_py1, center_py2 = utils.patch_coordinates_from_center(
+                (p_center_x, p_center_y), roi_mask.shape, self.center_crop_size)
+
             if np.any(roi_mask[center_py1:center_py2, center_px1:center_px2] > 0):
                 TP_idxs.append(coords_idx)
             else:
@@ -196,8 +196,7 @@ class CandidatesFeatureExtraction:
         # check if required fraction of candidates is possible if not return the closest
         np.random.seed(20)
         sample_size = len(TP_idxs) * sample
-        sample_size = int(minimum_fp * len(FP_idxs)
-                          ) if sample_size == 0 else sample_size
+        sample_size = int(minimum_fp * len(FP_idxs)) if sample_size == 0 else sample_size
         if sample_size <= len(FP_idxs):
             TP_idxs.extend(np.random.choice(
                 FP_idxs, size=sample_size, replace=False))
@@ -214,17 +213,18 @@ class CandidatesFeatureExtraction:
         Returns:
             np.ndarray: with feature values
         """
-        # Preallocate results container
-        images = np.empty(
-            (len(candidates), self.haar_params['patch_size'], self.haar_params['patch_size']))
+        images = utils.img_to_patches_array(image, candidates, self.haar_params['patch_size'])
 
-        # generate one patches array to distribute computation
-        for j, coords in enumerate(candidates):
-            # Get the patch arround center
-            x1, x2, y1, y2 = patch_coordinates_from_center(
-                center=(coords[0], coords[1]), image_shape=image.shape,
-                patch_size=self.haar_params['patch_size'], use_padding=False)
-            images[j, :, :] = image[y1:y2, x1:x2]
+        # Generate a list of features for easy access for feature selection
+        if ((self.haar_params['skimage']['feature_coord'] is None) and
+                (self.haar_params['skimage']['feature_type'] is None)):
+            self.skimage_haar_feature_coords, self.skimage_haar_feature_types = \
+                haar_like_feature_coord(
+                    width=self.haar_params['patch_size'], height=self.haar_params['patch_size'],
+                    feature_type=['type-2-x', 'type-2-y', 'type-3-x', 'type-3-y', 'type-4'])
+        else:
+            self.skimage_haar_feature_coords = self.haar_params['skimage']['feature_coord']
+            self.skimage_haar_feature_types = self.haar_params['skimage']['feature_type']
 
         # Generate computational graph
         X = delayed(extract_haar_feature_image_skimage(
@@ -240,7 +240,9 @@ class CandidatesFeatureExtraction:
         haarfe = HaarFeatureExtractor(
             self.haar_params['patch_size'], True, True,
             self.haar_params['ours']['horizontal_feature_types'],
-            self.haar_params['ours']['rotated_feature_types']
+            self.haar_params['ours']['rotated_feature_types'],
+            self.haar_params['ours']['rotated_feature_selection'],
+            self.haar_params['ours']['horizontal_feature_selection']
         )
         self.our_haar_feature_types_h = haarfe.features_h
         self.our_haar_feature_types_r = haarfe.features_r
@@ -250,12 +252,6 @@ class CandidatesFeatureExtraction:
         # Obtain the features
         for k, img in enumerate(images):
             X_extension[k, :] = haarfe.extract_features_from_crop(img)
-
-        # Generate a list of features for easy access for feature selection
-        self.skimage_haar_feature_coords, self.skimage_haar_feature_types = \
-            haar_like_feature_coord(
-                width=self.haar_params['patch_size'], height=self.haar_params['patch_size'],
-                feature_type=['type-2-x', 'type-2-y', 'type-3-x', 'type-3-y', 'type-4'])
 
         # Adjust columns names if necessary
         if 'haar' not in self.feature_names[0]:
@@ -448,6 +444,7 @@ class CandidatesFeatureExtraction:
         Returns:
             glcm_features (dict): dictionary containing glcm features
         """
+
 
         single_decomp_glcm = graycomatrix(min_max_norm(
             single_decomp, max_val=256).astype(np.uint8), [2], [0], normed=True)

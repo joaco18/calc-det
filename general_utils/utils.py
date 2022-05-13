@@ -2,6 +2,8 @@ import cv2
 import numpy as np
 import logging
 from numba import njit
+from itertools import zip_longest
+from scipy.ndimage.morphology import binary_fill_holes
 
 logging.basicConfig(level=logging.INFO)
 
@@ -55,34 +57,21 @@ def sobel_gradient(img):
     return grad
 
 
+@njit(cache=True)
 def patch_coordinates_from_center(
     center: tuple, image_shape: tuple, patch_size: int, use_padding: bool = True,
     image: np.ndarray = None, mask: np.ndarray = None
 ):
     """Returns coordinates of the patch, cropping the image at center location
     with a given patch size. If the center is in the left or upper border shift
-    the center and crop fixed size patch. If the center is in the left bottom border
-    do the same if use_padding=False, or pad with zeros and crop
-
-    Crops to image boundaries if patch excceeds image dimensions.
-
+    the center and crop fixed size patch.
     Args:
         center (tuple): (x coordinate, y coordinate)
         image_shape (tuple): shape of image to crop patches from
         patch_size (int, optional): patch size
-        use_padding (bool): If the center falls in right bottob border, optionally
-            padd the image and give the centered patch, if False, shift the center
-            to fit inside the image
     Returns:
         x1, x2, y1, y2: coordinates of the patch to crop
-        if use_padding:
-            image (np.ndarray, optional): padded image
-            mask (np.ndarray, optional): padded mask
     """
-    if use_padding:
-        assert (image is not None) and (mask is not None), \
-            'If padding method is used, image and mask should be provided,' \
-            ' utils.patch_coordinates_from_center'
     patch_half_size = patch_size // 2
 
     x1 = center[0] - patch_half_size
@@ -97,22 +86,56 @@ def patch_coordinates_from_center(
         y1 = 0
         y2 = patch_size
 
-    if not use_padding:
-        if x2 > image_shape[1]:
-            x2 = image_shape[1]
-            x1 = image_shape[1] - patch_size
-        if y2 > image_shape[0]:
-            y2 = image_shape[0]
-            y1 = image_shape[0] - patch_size
-        return x1, x2, y1, y2
-    else:
-        if x2 > image_shape[1]:
-            image = np.pad(image, ((0, 0), (0, patch_size)), mode='constant', constant_values=0)
-            mask = np.pad(mask, ((0, 0), (0, patch_size)), mode='constant', constant_values=0)
-        if y2 > image_shape[0]:
-            image = np.pad(image, ((0, patch_size), (0, 0)), mode='constant', constant_values=0)
-            mask = np.pad(mask, ((0, patch_size), (0, 0)), mode='constant', constant_values=0)
-        return x1, x2, y1, y2, image, mask
+    if x2 > image_shape[1]:
+        x2 = image_shape[1]
+        x1 = image_shape[1] - patch_size
+    if y2 > image_shape[0]:
+        y2 = image_shape[0]
+        y1 = image_shape[0] - patch_size
+    return x1, x2, y1, y2
+
+
+def patch_coordinates_from_center_w_padding(
+    center: tuple, image_shape: tuple, patch_size: int,
+    image: np.ndarray = None, mask: np.ndarray = None
+):
+    """Returns coordinates of the patch, cropping the image at center location
+    with a given patch size. If the center is in the left or upper border shift
+    the center and crop fixed size patch. If the center is in the right or bottom
+    border do the same pad with zeros and crop
+    Args:
+        center (tuple): (x coordinate, y coordinate)
+        image_shape (tuple): shape of image to crop patches from
+        patch_size (int, optional): patch size
+    Returns:
+        x1, x2, y1, y2: coordinates of the patch to crop
+        image (np.ndarray, optional): padded image
+        mask (np.ndarray, optional): padded mask
+    """
+    assert (image is not None) and (mask is not None), \
+        'If padding method is used, image and mask should be provided,' \
+        ' utils.patch_coordinates_from_center_w_padding'
+    patch_half_size = patch_size // 2
+
+    x1 = center[0] - patch_half_size
+    x2 = center[0] + patch_size - patch_half_size
+    if x1 < 0:
+        x1 = 0
+        x2 = patch_size
+
+    y1 = center[1] - patch_half_size
+    y2 = center[1] + patch_size - patch_half_size
+    if y1 < 0:
+        y1 = 0
+        y2 = patch_size
+
+    if x2 > image_shape[1]:
+        image = np.pad(image, ((0, 0), (0, patch_size)), mode='constant', constant_values=0)
+        mask = np.pad(mask, ((0, 0), (0, patch_size)), mode='constant', constant_values=0)
+    if y2 > image_shape[0]:
+        image = np.pad(image, ((0, patch_size), (0, 0)), mode='constant', constant_values=0)
+        mask = np.pad(mask, ((0, patch_size), (0, 0)), mode='constant', constant_values=0)
+    return x1, x2, y1, y2, image, mask
 
 
 @njit(cache=True)
@@ -222,6 +245,7 @@ def get_patch_labels(patches: np.ndarray, image_ids: np.ndarray, db, center_crop
 
 @njit(cache=True)
 def our_hist_numba(vector, bins):
+    """Computing a histogram in a very fast way"""
     freqs = np.zeros((bins-1,))
     for i in range(len(vector)):
         freqs[vector[i]] += 1
@@ -230,6 +254,7 @@ def our_hist_numba(vector, bins):
 
 @njit(cache=True)
 def get_trianglular_threshold(histogram: np.ndarray):
+    """Based on a histogram, compute the tringular threshold"""
     # Get the left and rightmost nonzero values of the histogram
     idxs = np.nonzero(histogram)[0]
     minv = idxs.min()
@@ -274,3 +299,77 @@ def get_trianglular_threshold(histogram: np.ndarray):
         return histogram.size - 1 - split
     else:
         return split
+
+
+@njit(cache=True)
+def img_to_patches_array(image: np.ndarray, candidates: np.ndarray, patch_size: int):
+    """Crop the fix size patches arround the detections and stack them in an array
+    Args:
+        image (np.ndarray): image to process
+        candidates (np.ndarray): [x,y,radius]
+        patch_size (int): patch size to use
+    Returns:
+        np.ndarray: [n_patches, patch_size, patch_size]
+    """
+    images = np.empty((len(candidates), patch_size, patch_size))
+    for j, coords in enumerate(candidates):
+        # Get the patch arround center
+        x1, x2, y1, y2 = patch_coordinates_from_center(
+            center=(coords[0], coords[1]), image_shape=image.shape,
+            patch_size=patch_size)
+        images[j, :, :] = image[y1:y2, x1:x2]
+    return images
+
+
+@njit(cache=True)
+def get_an_example_array(image: np.ndarray, patch_size: int, candidates: np.ndarray):
+    """Given an image, generate an array of fixed size patches centered on the candidates.
+    Args:
+        image (np.ndarray): image to process
+        patch_size (int): indx
+        candidates (np.ndarray): [x, y, radius]
+    Returns:
+        np.ndarray: array of patches [n_patches, size, size]
+    """
+    # candidate selection
+    images = img_to_patches_array(image, candidates, patch_size)
+    return images
+
+
+def blockwise_retrieval(t, size=2, fillvalue=None):
+    it = iter(t)
+    return zip_longest(*[it]*size, fillvalue=fillvalue)
+
+
+def draw_our_haar_like_features(
+    image: np.ndarray, haar_feature, alpha=0.5
+):
+    image = min_max_norm(image, 255).astype('uint8')
+    result = np.zeros(image.shape).astype(int)
+    if len(image.shape) < 3:
+        image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+
+    xby4 = blockwise_retrieval(haar_feature.coords_x, size=4)
+    yby4 = blockwise_retrieval(haar_feature.coords_y, size=4)
+    cby4 = blockwise_retrieval(haar_feature.coeffs, size=4)
+    for rect_pts_x, rect_pts_y, rect_coeff in zip(xby4, yby4, cby4):
+        rect_points = list(zip(rect_pts_x, rect_pts_y))
+        rect_points = np.asarray(rect_points, dtype='int32')
+        a = int(abs(rect_coeff[0]))
+        if rect_coeff[0] < 0:
+            temp = np.zeros(result.shape).astype('uint8')
+            ch = cv2.convexHull(rect_points)
+            bin_ = cv2.drawContours(temp, [ch], -1, 1, -1)
+            result -= (binary_fill_holes(bin_)*a).astype(int)
+        else:
+            temp = np.zeros(result.shape).astype('uint8')
+            ch = cv2.convexHull(rect_points)
+            bin_ = cv2.drawContours(temp, [ch], -1, 1, -1)
+            result += (binary_fill_holes(bin_)*a).astype(int)
+    mask = np.zeros(image.shape)
+    mask[:, :, 0] = np.zeros_like(result)
+    mask[:, :, 1] = np.where(result < 0, 255, 0)
+    mask[:, :, 0] = np.where(result > 0, 255, 0)
+    mask = mask.astype('uint8')
+    image = cv2.addWeighted(image, (1-alpha), mask, alpha, 0.0)
+    return image
