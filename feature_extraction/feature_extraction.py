@@ -1,4 +1,5 @@
 import cv2
+import logging
 import numpy as np
 
 from dask import delayed
@@ -16,6 +17,8 @@ epsillon = np.finfo(float).eps
 wavelet_decomp_names = ['LL1', 'LH1', 'HL1', 'HH1', 'LL2', 'LH2', 'HL2', 'HH2']
 glcm_decompositions = ['LH1', 'HL1', 'HH1']
 skimage_glcm_features = ['energy', 'correlation', 'homogeneity', 'contrast', 'dissimilarity']
+
+logging.basicConfig(level=logging.INFO)
 
 
 class CandidatesFeatureExtraction:
@@ -79,32 +82,17 @@ class CandidatesFeatureExtraction:
                             f'patch_glcm_{fn}_{dn}_{angle_idx}')
         # some debug features for now
         self.feature_names.extend(['candidate_coordinates',
-                                   'patch_coordinates',
-                                   'center_patch_mask_intersection'])
+                                   'patch_coordinates'])
 
-    def extract_features(
-            self, candidates: np.ndarray, image: np.ndarray,
-            roi_mask: np.ndarray, fp2tp_sample=None):
+    def extract_features(self, candidates: np.ndarray, image: np.ndarray):
         """Extracts features from image patches cropped around given candidates.
         Args:
             candidates (np.ndarray): of dtype=int containing candidats for FE of shape
                 (n_candidates, 3). Second axis should contain (x_coord, y_coord, radius).
             image (np.ndarray): 2D image used for cropping and FE
-            roi_mask (np.ndarray): true rois mask
-            fp2tp_sample (int, optional): number of FP candidates to sample for each TP candidate.
-                If not None, total number of sampled candidates will be
-                len(TP_candidates)*(fp2tp_sample + 1). Defaults to None which means no sampling
-                is performed and features for all candidates are extracted.
-
         Returns:
-            np.array: rows candidates, columns features
+            np.array: rows candidates, columns (features + 3 columns of metadata)
         """
-        # sample candidates to a given size if needed
-        if fp2tp_sample is not None:
-            cand_idxs = self.split_sample_candidates(
-                candidates, roi_mask, fp2tp_sample)
-            candidates = candidates[cand_idxs]
-
         image = utils.min_max_norm(image, max_val=1.)
         candidates_features = []
 
@@ -117,23 +105,13 @@ class CandidatesFeatureExtraction:
         if self.haar_params:
             features_haar = self.haar_features_extraction(image, candidates)
 
-        # TODO: paralelize with Pool. This is not going to be faster unless you use the array
-        # of patches, because if not you're mapping the whole image to every core each time
-        # you want a patch.
         for coords in candidates:
             # calculating canidate cropping patch coordinates
             patch_x1, patch_x2, patch_y1, patch_y2 = utils.patch_coordinates_from_center(
                 (coords[0], coords[1]), image.shape, self.patch_size)
             image_patch = image[patch_y1:patch_y2, patch_x1:patch_x2]
 
-            # getting coordinates of the patch center crop
-
-            p_center_y = patch_y1 + (patch_y2 - patch_y1)//2
-            p_center_x = patch_x1 + (patch_x2 - patch_x1)//2
-            center_px1, center_px2, center_py1, center_py2 = utils.patch_coordinates_from_center(
-                (p_center_x, p_center_y), image.shape, self.center_crop_size)
-
-            # extracting features
+            # Extracting non-haar features
             features = []
 
             # First order statistics features
@@ -149,55 +127,14 @@ class CandidatesFeatureExtraction:
             if self.wavelet_params:
                 features.extend(self.get_wavelet_features(image_patch))
 
+            # Append metadata columns
             features.append(coords)
             features.append(((patch_y1, patch_y2), (patch_x1, patch_x2)))
-            # cropping center of the patch now
-            features.append(
-                (roi_mask[center_py1:center_py2, center_px1:center_px2] > 0).sum())
             candidates_features.append(features)
         candidates_features = np.asarray(candidates_features, dtype=object)
         if self.haar_params:
             candidates_features = np.concatenate([features_haar, candidates_features], axis=1)
         return candidates_features
-
-    def split_sample_candidates(self, candidates, roi_mask, sample, minimum_fp: float = 0.2):
-        """Samples given candidates list to obtain a given proportion of TPxFP in it.
-        First selects all TP canidates and then randomly sampled a required number of FP.
-        If the requiered number of FP is larger than the ones available, then return all
-        of them, if there are no TP among the candidates return 20% of FP.
-        To the define the label of the candidate use a center window of
-        self.labeling_center_region_size, size arround the center.
-        Args:
-            minimum_fp (float): if no TP were deetected, still sample 20% of the FP of that case.
-        """
-        TP_idxs = []
-        FP_idxs = []
-        for coords_idx, coords in enumerate(candidates):
-            # getting patch coordinates
-            patch_x1, patch_x2, patch_y1, patch_y2 = utils.patch_coordinates_from_center(
-                (coords[0], coords[1]), roi_mask.shape, self.patch_size)
-
-            # getting coordinates of the patch center crop
-
-            p_center_y = patch_y1 + (patch_y2 - patch_y1)//2
-            p_center_x = patch_x1 + (patch_x2 - patch_x1)//2
-            center_px1, center_px2, center_py1, center_py2 = utils.patch_coordinates_from_center(
-                (p_center_x, p_center_y), roi_mask.shape, self.center_crop_size)
-
-            if np.any(roi_mask[center_py1:center_py2, center_px1:center_px2] > 0):
-                TP_idxs.append(coords_idx)
-            else:
-                FP_idxs.append(coords_idx)
-        # check if required fraction of candidates is possible if not return the closest
-        np.random.seed(20)
-        sample_size = len(TP_idxs) * sample
-        sample_size = int(minimum_fp * len(FP_idxs)) if sample_size == 0 else sample_size
-        if sample_size <= len(FP_idxs):
-            TP_idxs.extend(np.random.choice(
-                FP_idxs, size=sample_size, replace=False))
-        else:
-            TP_idxs.extend(FP_idxs)
-        return TP_idxs
 
     def haar_features_extraction(self, image: np.ndarray, candidates: np.ndarray):
         """Get horizontal haar features from skimage and rotated ones from our code.
@@ -222,14 +159,14 @@ class CandidatesFeatureExtraction:
             self.skimage_haar_feature_types = self.haar_params['skimage']['feature_type']
 
         # Generate computational graph
-        X = delayed(extract_haar_feature_image_skimage(
-            img, self.haar_params['skimage']['feature_type'],
-            self.haar_params['skimage']['feature_coord']
-        ) for img in images)
-        # Compute the result
-        X = np.array(X.compute(scheduler='processes'))
-
-        # self.number_of_skimage_haar_features = X.shape[1] if (len(X.shape) == 2) else X.shape[0]
+        have_skimage_haars = len(self.skimage_haar_feature_coords) != 0
+        if have_skimage_haars:
+            X = delayed(extract_haar_feature_image_skimage(
+                img, self.haar_params['skimage']['feature_type'],
+                self.haar_params['skimage']['feature_coord']
+            ) for img in images)
+            # Compute the result
+            X = np.array(X.compute(scheduler='processes'))
 
         # Our haar_features
         haarfe = HaarFeatureExtractor(
@@ -241,16 +178,19 @@ class CandidatesFeatureExtraction:
         )
         self.our_haar_feature_types_h = haarfe.features_h
         self.our_haar_feature_types_r = haarfe.features_r
-        # Preallocate results holder
-        X_extension = np.empty((len(candidates), len(haarfe.features_h)+len(haarfe.features_r)))
 
-        # Obtain the features
-        for k, img in enumerate(images):
-            X_extension[k, :] = haarfe.extract_features_from_crop(img)
+        have_our_haars = (len(haarfe.features_h) != 0) or (len(haarfe.features_r) != 0)
+        if have_our_haars:
+            # Preallocate results holder
+            X_extension = np.empty((len(candidates), len(haarfe.features_h)+len(haarfe.features_r)))
+
+            # Obtain the features
+            for k, img in enumerate(images):
+                X_extension[k, :] = haarfe.extract_features_from_crop(img)
 
         # Adjust columns names if necessary
         if 'haar' not in self.feature_names[0]:
-            haar_feature_names = [f'haar_{i}' for i in range(X.shape[1])]
+            haar_feature_names = [f'haar_{i}' for i in range(len(self.skimage_haar_feature_coords))]
             our_h_haar_feature_names = [f'hor_haar_{i}' for i in range(len(haarfe.features_h))]
             our_r_haar_feature_names = [f'rot_haar_{i}' for i in range(len(haarfe.features_r))]
             self.feature_names = \
@@ -258,8 +198,14 @@ class CandidatesFeatureExtraction:
                 our_r_haar_feature_names + self.feature_names
 
         # Merge our and skimage features
-        X = np.concatenate([X, X_extension], axis=1)
-        return X
+        if have_our_haars and have_skimage_haars:
+            return np.concatenate([X, X_extension], axis=1)
+        elif have_our_haars and (not have_skimage_haars):
+            return X_extension
+        elif (not have_our_haars) and have_skimage_haars:
+            return X
+        else:
+            logging.warning('No haars where extracted')
 
     @staticmethod
     def entropy_uniformity(image_patch):
@@ -333,7 +279,7 @@ class CandidatesFeatureExtraction:
         Args:
             gabored_images (list): list of images filtered with Gabor kernels
         Returns:
-            np.ndarray: of 4_features*n_gabored_images 
+            np.ndarray: of 4_features*n_gabored_images
         """
         features = []
         for filtered_image in gabored_images:
