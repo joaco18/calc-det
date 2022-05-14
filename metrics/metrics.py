@@ -350,7 +350,7 @@ def froc_curve_bootstrap(
         thresholds (np.ndarray): Thresholds
     """
 
-    if n_jobs is None:
+    if n_jobs == -1:
         n_jobs = mp.cpu_count()
     thresholds = np.sort(original_froc_df.pred_scores.unique())[::-1]
 
