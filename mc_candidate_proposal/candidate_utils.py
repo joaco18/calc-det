@@ -1,4 +1,5 @@
 import numpy as np
+from numba import njit
 
 
 def balance_candidates(
@@ -25,3 +26,8 @@ def balance_candidates(
         fp_indxs = np.random.choice(fp_indxs, size=sample_size, replace=False)
         fp = [fp[i] for i in range(len(fp)) if i in fp_indxs]
     return tp, fp
+
+
+def filter_dets_from_muscle_region(candidates: np.ndarray, muscle_mask: np.ndarray):
+    muscle_mask = np.where(muscle_mask > 0, False, True)
+    return candidates[muscle_mask[candidates[:, 1], candidates[:, 0]]]
