@@ -88,6 +88,9 @@ class HoughCalcificationDetection:
         if hough2:
             # 6. Local Hough
             h2_circles = self.hough2(processed_image, h1_circles)
+            
+            # handling duplicate candidates due to overlapping windows around hough1 candidates
+            h2_circles = np.unique(h2_circles, axis=0)
         else:
             h2_circles = None
 
