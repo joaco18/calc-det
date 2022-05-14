@@ -54,9 +54,10 @@ class MorphologyCalcificationDetection:
         Returns:
             candidate_blobs (np.ndarray): [x, y, radius]
         """
-        assert self.filter_muscle_region and muscle_mask is None, \
-            'If filtering of muscle region is required the muscle region mask should'\
-            ' be provided'
+        if self.filter_muscle_region:
+            assert muscle_mask is not None, \
+                'If filtering of muscle region is required the muscle region mask should'\
+                ' be provided'
         self.image = image
         # load or create reconstructed by dialation image
         rbd_image = None
