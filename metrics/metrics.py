@@ -3,13 +3,13 @@ import math
 import cv2
 import numpy as np
 import pandas as pd
-from general_utils.utils import (get_center_bboxes,
-                                 patch_coordinates_from_center)
+import multiprocessing as mp
+
 from scipy import spatial
 from tqdm import tqdm
+from functools import partial
 
-from metrics.metrics_utils import (evaluate_pairs_iou_appox,
-                                   evaluate_pairs_iou_exact)
+from metrics.metrics_utils import evaluate_pairs_iou_appox, evaluate_pairs_iou_exact
 import general_utils.utils as utils
 
 
@@ -185,24 +185,6 @@ def get_tp_fp_fn(
     return tp, fp, fn, gt_predicted, close_fp
 
 
-def label_candidates_center_criteria(
-    candidates: np.ndarray, roi_mask: np.ndarray, center_size: int
-):
-    """Label candidates as TP or FP. Is a window of "center_size" centered on the candidate inter
-    sects any gt roi in the rois mask, then is a TP else is FP"""
-    TP_idxs = []
-    FP_idxs = []
-    for coords_idx, coords in enumerate(candidates):
-        patch_x1, patch_x2, patch_y1, patch_y2 = utils.patch_coordinates_from_center(
-            (coords[0], coords[1]), roi_mask.shape, center_size, use_padding=False
-        )
-        if np.any(roi_mask[patch_y1:patch_y2, patch_x1:patch_x2] > 0):
-            TP_idxs.append(coords_idx)
-        else:
-            FP_idxs.append(coords_idx)
-    return candidates[TP_idxs], candidates[FP_idxs]
-
-
 def create_binary_mask_from_blobs(shape: tuple, blobs_x_y_sigma: list):
     img_binary_blobs = np.zeros(shape)
     for blob in blobs_x_y_sigma:
@@ -221,94 +203,180 @@ def fp_per_unit_area(image_shape, no_fp):
     return no_fp/(image_shape[0] * image_shape[1] * (0.070**2)/100)
 
 
-def get_froc(froc_df:pd.DataFrame, db, center_crop_size=7):
-    """Get froc plot points
-
+def get_froc_df_of_many_imgs_features(
+    candidates_df: pd.DataFrame, fns_df: pd.DataFrame, predictions: np.ndarray 
+):
+    """Get the standard froc dataframe out of the candidates dataframe of many images
+    and the dataframe of false negatives for those images.
     Args:
-        froc_df (pd.DataFrame):  containing patches classification information,
-            with columns 'img_id', 'patch_coordinates', 'confidence'
-        db (INBreast_Dataset): used to retrieve image mask based on image_id
-        center_crop_size (int, optional): patch center crop size 
-            to consider while slicing the mask. Defaults to 7.
-        
+        candidates_df (pd.DataFrame): 
+            Rows: candidates (tp + fp)
+            Columns: ['candidate_coordinates', 'labels', 'img_id']
+        fns_df (pd.DataFrame): 
+            Rows: fn lesion
+            Columns: ['x', 'y', 'radius', 'labels', 'img_id']
+        predictions (np.ndarray): prediction scores for the candidates
     Returns:
-    fpis, tprs, froc_aggr_all_df, total_mC
-        tprs, fpis: arrays with from points values
-        froc_aggr_all_df: pd.Dataframe with the same columns as froc_df
-            plus additional column 'label', sorted by confidence score
-            and with the reduced number of patches in case of multiple
-            patches overlapping same rois with the highest confidence patch kept
-        total_mC (int): number of all analyzed ROIs from the mask
-        
+        pd.DataFrame:
+            Rows: tp, fp, fn objects
+            Columns: [
+                x, y, radius, detection_labels, pred_scores,
+                image_ids, pred_binary, class_labels
+            ]
+    """
+    df = candidates_df.copy()
+    values = candidates_df.loc[:, 'candidate_coordinates'].values.copy()
+    df.loc[:, ['x', 'y', 'radius']] = np.vstack(values)
+    df.loc[df.labels, 'detection_labels'] = 'TP'
+    df.loc[~df.labels, 'detection_labels'] = 'FP'
+    df.loc[:, 'pred_scores'] = predictions
+
+    fns_df_temp = fns_df.copy()
+    fns_df_temp.loc[:, 'detection_labels'] = 'FN'
+    fns_df_temp.loc[:, 'pred_scores'] = 0.
+    columns = ['x', 'y', 'radius', 'detection_labels', 'pred_scores', 'img_id']
+
+    df = pd.concat([df[columns], fns_df_temp[columns]], ignore_index=True)
+    df.columns = ['x', 'y', 'radius', 'detection_labels', 'pred_scores', 'image_ids']
+    df.loc[:, 'pred_binary'] = False
+    df.loc[:, 'class_labels'] = False
+    return df
+
+
+def get_froc_df_of_img(
+    tp: list, fp: list, fn: list, predictions: np.ndarray, image_id: int
+):
+    """Get the basic dataframe used for froc calculation from the detections
+    of an image.
+    Args:
+        tp (list): True positive candidates [[x, y, radius]]
+        fp (list): False positive candidates [[x, y, radius]]
+        fn (list): False Negative lesions [[x, y, radius]]
+        predictions (np.ndarray): scores outputed by the model for the candidate
+            (tp+fp) detections
+        image_id (int): id of the image considered
+
+    Returns:
+        pd.DataFrame:
+            Rows: tp, fp, fn objects
+            Columns: [
+                x, y, radius, detection_labels, pred_scores,
+                image_ids, pred_binary, class_labels
+            ]
+    """
+    objects = tp + fp + fn
+    objects = np.asarray(objects)
+    df = pd.DataFrame(objects, columns=['x', 'y', 'radius'])
+    df['detection_labels'] = ['TP']*len(tp) + ['FP']*len(fp) + ['FN']*len(fn)
+    df['pred_scores'] = 0.
+    df.loc[(df.detection_labels == 'TP') | (df.detection_labels == 'FP'), 'pred_scores'] = \
+        predictions
+    df['image_ids'] = image_id
+    df['pred_binary'] = False
+    df['class_labels'] = False
+    return df
+
+
+def froc_curve(froc_df: pd.DataFrame, thresholds: np.ndarray = None, cut_on_50fpi: bool = False):
+    """Using the complete dataset for froc computation containing all the images, obtains the
+    Sensitivity and the Average False positives per image at each threshold.
+    If thresholds is given then those thresholds are checked if not all posible ones.
+    If cut_on_50fpi is True, then stop computing when 50 fpi are reached.
+    Args:
+        froc_df (pd.DataFrame): Dataframe with prediction results,
+            check function: 'get_froc_df_of_img'
+        thresholds (np.ndarray, optional): Array of thresholds to check. Defaults to None.
+        cut_on_50fpi (bool, optional): Whether to stop computation at 50 ftpi or not.
+            Defaults to False.
+    Returns:
+        sensitivities (np.ndarray): sensitivities at each threshold
+        avgs_fp_per_image (np.ndarray): average number of fp per image at each threshold
+        thresholds (np.ndarray): thresholds
+    """
+    total_n_images = len(froc_df.image_ids.unique())
+    sensitivities = []
+    avgs_fp_per_image = []
+    if thresholds is None:
+        thresholds = np.sort(froc_df.pred_scores.unique())[::-1]
+    for th in thresholds:
+        froc_df.loc[froc_df.pred_scores >= th, 'pred_binary'] = True
+        froc_df.loc[froc_df.pred_scores < th, 'pred_binary'] = False
+
+        classif_as_pos = froc_df.pred_binary
+        froc_df.loc[classif_as_pos & (froc_df.detection_labels == 'TP'), 'class_labels'] = 'TP'
+        froc_df.loc[classif_as_pos & (froc_df.detection_labels == 'FP'), 'class_labels'] = 'FP'
+        # This may only occur on th=0
+        froc_df.loc[classif_as_pos & (froc_df.detection_labels == 'FN'), 'class_labels'] = 'FN'
+
+        classif_as_neg = ~froc_df.pred_binary
+        froc_df.loc[classif_as_neg & (froc_df.detection_labels == 'FN'), 'class_labels'] = 'FN'
+        froc_df.loc[classif_as_neg & (froc_df.detection_labels == 'TP'), 'class_labels'] = 'FN'
+        froc_df.loc[classif_as_neg & (froc_df.detection_labels == 'FP'), 'class_labels'] = 'TN'
+
+        n_TP = len(froc_df.loc[froc_df.class_labels == 'TP'])
+        n_FP = len(froc_df.loc[froc_df.class_labels == 'FP'])
+        n_FN = len(froc_df.loc[froc_df.class_labels == 'FN'])
+
+        sens = n_TP / (n_TP + n_FN)
+        avg_nfp_per_image = n_FP / total_n_images
+
+        sensitivities.append(sens)
+        avgs_fp_per_image.append(avg_nfp_per_image)
+
+        if cut_on_50fpi and avg_nfp_per_image > 50:
+            break
+    return sensitivities, avgs_fp_per_image, thresholds
+
+
+def froc_curve_bootstrap(
+    original_froc_df: pd.DataFrame, n_sets: int = 1000, n_jobs: int = -1
+):
+    """Using the complete dataset for froc computation containing all the images,
+    generates 'n_sets' bootstrap samples. For each of them compute the froc curve.
+    Args:
+        original_froc_df (pd.DataFrame): Dataframe with prediction results,
+            check function: 'get_froc_df_of_img'
+        n_sets (int, optional): Number of bootstrap samples to take. Defaults to 1000.
+        n_jobs (int, optional): Number of processes to use. If -1 all available
+            cores will be used. Defaults to -1.
+    Returns:
+        avg_sensitivities (np.ndarray): Average (over btrsp sets) sensitivity at each threshold
+        std_sensitivities (np.ndarray): Standat deviation (over btrsp sets) of sensitivity
+            at each threshold
+        avg_avgs_fp_per_image (np.ndarray): Average (over btrsp sets) false positives per image
+            at each threshold.
+        std_avgs_fp_per_image (np.ndarray): Standard deviation (over btrsp sets) of false positives
+            per image at each threshold.
+        thresholds (np.ndarray): Thresholds
     """
 
-    # track highest confidence patches that overlap image rois
-    froc_aggr_all = []
-    total_mC = 0
-    # count total FN
-    FN = []
-    
-    # 1. Aggregating patches prediction and creating a mapping "TP, score"
-    for img_id in tqdm(froc_df.img_id.unique()):
-        img_index = db.df[db.df.img_id == img_id].index.values[0]
+    if n_jobs is None:
+        n_jobs = mp.cpu_count()
+    thresholds = np.sort(original_froc_df.pred_scores.unique())[::-1]
 
-        lesion_mask = db[img_index]['lesion_mask']
-        total_mC  = total_mC + len(np.unique(lesion_mask)) - 1
-        image_froc_df = froc_df[froc_df.img_id == img_id]
-        
-        fp_patches = []
-        tp_patches = []
-        # iterating over patches and checking if the mask instersection is not zero
-        tp_rois_dict = {}
-        for patch_idx, patch in enumerate(image_froc_df.patch_coordinates.values):
-            (px1, px2), (py1, py2) = patch
-            
-            # getting centre crop of the patch            
-            p_center_y = py1 + (py2 - py1)//2
-            p_center_x = px1 + (px2 - px1)//2
-            center_px1, center_px2, center_py1, center_py2  = patch_coordinates_from_center((p_center_y, p_center_x), lesion_mask.shape, center_crop_size, use_padding=False)
-            
-            mask_rois_in_patch = set(lesion_mask[center_py1:center_py2, center_px1:center_px2].ravel()).difference(set([0]))
+    # Get btstrp samples
+    n_samples = len(original_froc_df)
+    btstrp_froc_df = []
+    for i in range(n_sets):
+        btstrp_froc_df.append(original_froc_df.sample(n=n_samples, replace=True, random_state=i))
 
-            if len(mask_rois_in_patch) == 0:
-                patch_fp_dict =  image_froc_df.iloc[patch_idx].to_dict()
-                patch_fp_dict['label'] = 'FP'
-                fp_patches.append(patch_fp_dict)
-            else:
-                for mask_roi in mask_rois_in_patch:
-                            
-                    if mask_roi not in tp_rois_dict.keys():
-                        # saving information about matched to roi patch
-                        tp_rois_dict[mask_roi] = image_froc_df.iloc[patch_idx].to_dict()
-                        tp_rois_dict[mask_roi]['label'] = 'TP'
-                    else:
-                        # rewriting match patch to roi if it has higher confidence
-                        if image_froc_df.iloc[patch_idx]['confidence'] > tp_rois_dict[mask_roi]['confidence']:
-                            tp_rois_dict[mask_roi] = image_froc_df.iloc[patch_idx].to_dict()
-                            tp_rois_dict[mask_roi]['label'] = 'TP'
+    # compute individual FROCS
+    partial_func_froc_curve = partial(froc_curve, thresholds=thresholds)
+    res = []
+    with mp.Pool(n_jobs) as pool:
+        for result in tqdm(pool.imap(partial_func_froc_curve, btstrp_froc_df), total=n_sets):
+            res.append(result)
 
-        tp_patches.extend(tp_rois_dict.values())
-        froc_aggr_all.extend(fp_patches)
-        froc_aggr_all.extend(tp_patches)
-        FN.extend(set(lesion_mask.ravel()).difference(set([0])).difference(set(tp_rois_dict.keys())))
-    
-    # 2. Sorting the mapping
-    froc_aggr_all_df = pd.DataFrame(froc_aggr_all)
-    froc_aggr_all_df = froc_aggr_all_df.sort_values(by='confidence', ascending=False) 
-    
-    # actually calculating curve points
-    tprs = []
-    fpis = []
-    for i in range(1, len(froc_aggr_all_df)):
-        df_slice = froc_aggr_all_df.label.values[:i]
-        tp_count = (df_slice == 'TP').sum()
-        fp_count = (df_slice == 'FP').sum()
-        tpr = tp_count/(tp_count + len(FN))
-        fpi = fp_count/(len(froc_df.img_id.unique()))
-        
-        tprs.append(tpr)
-        fpis.append(fpi)
-        
-        if fpi > 50:
-            break
-    return fpis, tprs, froc_aggr_all_df, total_mC
+    # Reorganize results
+    sensitivities = np.zeros((n_sets, len(thresholds)))
+    avgs_fp_per_image = np.zeros((n_sets, len(thresholds)))
+    for i in range(n_sets):
+        sensitivities[i, :], avgs_fp_per_image[i, :], _ = res[i]
+
+    # Compute summaries
+    avg_sensitivities = np.mean(sensitivities, axis=0)
+    std_sensitivities = np.std(sensitivities, axis=0)
+    avg_avgs_fp_per_image = np.mean(avgs_fp_per_image, axis=0)
+    std_avgs_fp_per_image = np.std(avgs_fp_per_image, axis=0)
+    return avg_sensitivities, std_sensitivities, \
+        avg_avgs_fp_per_image, std_avgs_fp_per_image, thresholds
