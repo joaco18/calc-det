@@ -2,6 +2,7 @@ import cv2
 import h5py
 import logging
 import subprocess
+import math
 
 # import sys; sys.path.insert(0, '../')  # TODO: Remove this ugly thing
 
@@ -201,6 +202,10 @@ class HDoGCalcificationDetection:
 
         detections = self.convert_yxs2xys(detections)
         # candidate_detections = self.convert_yxs2xys(candidate_detections)
+
+        # convert to radius
+        detections[:, 2] = detections[:, 2]*math.sqrt(2)
+        detections = detections.astype(int)
 
         if save_results:
             self.store_final_detections(candidate_detections, detections)
