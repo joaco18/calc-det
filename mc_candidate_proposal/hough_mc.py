@@ -2,10 +2,12 @@ import cv2
 import multiprocessing as mp
 import numpy as np
 
-from general_utils.utils import patch_coordinates_from_center, min_max_norm, sobel_gradient
-from general_utils.dehazing import dehaze
 from pathlib import Path
 from skimage import restoration
+
+from general_utils.utils import patch_coordinates_from_center, min_max_norm, sobel_gradient
+from general_utils.dehazing import dehaze
+from mc_candidate_proposal.candidate_utils import filter_dets_from_muscle_region
 
 DEHAZING_PARAMS = {'omega': 0.9, 'window_size': 11, 'radius': 40, 'eps': 1e-5}
 
@@ -19,6 +21,7 @@ BACK_EXT_RADIOUS = 50
 
 EROSION_ITER = 20
 EROSION_SIZE = 5
+FILTER_MUSCLE_REGION = False
 this_file_path = Path(__file__).resolve()
 
 
@@ -33,10 +36,10 @@ class HoughCalcificationDetection:
                  hough2_params: dict = HOUGH2_PARAMS,
                  erosion_iter: int = EROSION_ITER,
                  erosion_size: int = EROSION_SIZE,
+                 filter_muscle_region: bool = FILTER_MUSCLE_REGION,
                  n_jobs: int = 6
     ):
-        """Constructor for detHoughCalcificationDetection class
-
+        """Constructor for HoughCalcificationDetection class
         Args:
             dehazing_params (dict): parameters used for dehazing
                 ex: {'omega': 0.9, 'window_size': 11, 'radius': 40, 'eps': 1e-5}
@@ -61,10 +64,13 @@ class HoughCalcificationDetection:
         self.erosion_iter = erosion_iter
         self.erosion_size = erosion_size
         self.n_jobs = n_jobs
+        self.filter_muscle_region = filter_muscle_region
 
-    def detect(self, image: np.ndarray, image_id: int, load_processed_images=True, hough2=False):
+    def detect(
+        self, image: np.ndarray, image_id: int, load_processed_images: bool = True,
+        hough2: bool = False, muscle_mask: np.ndarray = None
+    ):
         """Detects mC for a given image
-
         Args:
             image (np.ndarray): Grayscale image for detection.
             image_id (int): Image id used to save/load images
@@ -72,13 +78,19 @@ class HoughCalcificationDetection:
                 processed_imgs_path or to process them again. Defaults to True.
             hough2 (bool): Whether to calculate and output results of second
                 (local) hough circles search
-
+            muscle_mask (np.ndarray, optional): pectoral muscle mask. Only needed if
+                the filtering is indicated in the constructor
         Returns:
             h1_circles (np.ndarray): of shape (#_detected_circles, 3) corresponding
                 to the first global hough transform where second axis contains
                 circle_x, circle_y, circle_radius parameters
             h2_circles (np.ndarray): same as h1_circles but for the second search
         """
+        if self.filter_muscle_region:
+            assert muscle_mask is not None, \
+                'If filtering of muscle region is required the muscle region mask should'\
+                ' be provided'
+        
         # 1.-4. Image Enhancement
         processed_image = self.load_preprocessed_image(image, image_id,
                                                        load_processed_images)
@@ -88,11 +100,16 @@ class HoughCalcificationDetection:
         if hough2:
             # 6. Local Hough
             h2_circles = self.hough2(processed_image, h1_circles)
-            
+
             # handling duplicate candidates due to overlapping windows around hough1 candidates
             h2_circles = np.unique(h2_circles, axis=0)
         else:
             h2_circles = None
+
+        if self.filter_muscle_region:
+            h1_circles = filter_dets_from_muscle_region(h1_circles, muscle_mask)
+            if hough2:
+                h2_circles = filter_dets_from_muscle_region(h2_circles, muscle_mask)
 
         return h1_circles, h2_circles
 
