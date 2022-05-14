@@ -206,41 +206,106 @@ def crop_patch_around_center(patch_x1, patch_x2, patch_y1, patch_y2, center_crop
     return center_px1, center_px2, center_py1, center_py2
 
 
-def get_patch_labels(patches: np.ndarray, image_ids: np.ndarray, db, center_crop_size=7):
-    """Produces binray labels for patches based on the intersection of
-        the central patch part with a mask.
+@njit(cache=True)
+def patches_intersections_with_labels(
+    candidates: np.ndarray, roi_mask: np.ndarray, center_region_size: int, patch_size: int,
+    binary: bool = False
+):
+    """Get the number of pixels of the intersection between the candidates and the ground
+    truth mask, looking at the center (of size center_region_size) of a patch (of size
+    patch_size) centered at each candidate.
+    If binary just return if there's intersection of not.
     Args:
-        patches (np.ndarray): Array of tuples of tuples with patch coordinates
-            (patch_y1, patch_y2), (patch_x1, patch_x2)
-        image_ids (np.ndarray): Array of image ids for which patches correspond to.
-        db (INBreast_Dataset): Class used to retrieve mask locations to crop patches on.
-        center_crop_size (int, optional): Size of the center region part of the patch
-        Used for mask slicing. Defaults to 7.
-
+        candidates (np.ndarray): [x, y, radius]
+        roi_mask (np.ndarray): mask of lesion labels (each one identified independently)
+        center_region_size (int): region in the center of the patch to consider for labeling.
+            If None, all the patch is cosidered.
+        patch_size (int): size of the patch to evaluate
+        binary (bool, optional): Whether to return True or False if there was an intersection
+            instead of the counts. Defaults to False.
     Returns:
-        np.ndarray: patch labels
+        intersections (np.ndarray): number of pixels of intersection with the gt mask 
+            for each candidate. If Binary then this is binarized.
     """
+    intersections = np.empty(len(candidates))
+    for coords_idx, coords in enumerate(candidates):
+        # getting patch coordinates
+        patch_x1, patch_x2, patch_y1, patch_y2 = patch_coordinates_from_center(
+            (coords[0], coords[1]), roi_mask.shape, patch_size)
 
-    patch_labels = np.zeros(len(image_ids))
-    for pidx, patch in enumerate(patches):
-        mask = cv2.imread(
-            str(db.full_mask_path/f'{image_ids[pidx]}_lesion_mask.png'), cv2.IMREAD_GRAYSCALE)
+        # getting coordinates of the patch center. Necessary if the patch is
+        # in border and shifted
+        if center_region_size is not None:
+            p_center_y = patch_y1 + (patch_y2 - patch_y1)//2
+            p_center_x = patch_x1 + (patch_x2 - patch_x1)//2
+            patch_x1, patch_x2, patch_y1, patch_y2 = patch_coordinates_from_center(
+                (p_center_x, p_center_y), roi_mask.shape, center_region_size)
 
-        p_center_y = patch[0][0] + (patch[0][1] - patch[0][0])//2
-        p_center_x = patch[1][0] + (patch[1][1] - patch[1][0])//2
+        intersection = np.sum(roi_mask[patch_y1:patch_y2, patch_x1:patch_x2] > 0)
+        intersections[coords_idx] = intersection
+    if binary:
+        intersection = np.where(intersection > 0, 1, 0)
+    return intersections
 
-        center_py1 = p_center_y - center_crop_size//2
-        center_py2 = p_center_y + center_crop_size//2 + center_crop_size % 2
-        center_px1 = p_center_x - center_crop_size//2
-        center_px2 = p_center_x + center_crop_size//2 + center_crop_size % 2
 
-        crop_hs = center_crop_size//2
-        crop_res = center_crop_size % 2
+@njit(cache=True)
+def get_tp_fp_fn_center_patch_criteria(
+    candidates: np.ndarray, roi_mask: np.ndarray, center_region_size: int, patch_size: int
+):
+    """
+    Given an array of candidates and the mask of labels, it computes the itersection of a
+    patch of patch_size centered on each candidate and if the center crop of center_regio_size
+    inside that patch matches a lesion in the gt mask, its counted as a tp if not as a fp.
+    If center_region_size is None, then the intersection on the original patch is computed.
+    At the end it gets the labels that weren't matched.
+    Args:
+        candidates (np.ndarray): [x, y, radius]
+        roi_mask (np.ndarray): mask of lesion labels (each one identified independently)
+        center_region_size (int): region in the center of the patch to consider for labeling
+        patch_size (int): size of the patch to evaluate
+    Returns:
+        tp (list): [(x, y, radius)]
+        fp (list): [(x, y, radius)]
+        fn (list): [(x, y, half_the_max_size_of_bbox)]
+    """
+    tp = []
+    fp = []
+    fn = []
+    detected_labels = set()
+    for coords in candidates:
+        # getting patch coordinates
+        patch_x1, patch_x2, patch_y1, patch_y2 = patch_coordinates_from_center(
+            (coords[0], coords[1]), roi_mask.shape, patch_size)
 
-        patch_labels[pidx] = mask[p_center_y - crop_hs: p_center_y + crop_hs + crop_res,
-                                  p_center_x - crop_hs: p_center_x + crop_hs + crop_res].sum()
+        # getting coordinates of the patch center. Necessary if the patch is
+        # in border and shifted
+        if center_region_size is not None:
+            p_center_y = patch_y1 + (patch_y2 - patch_y1)//2
+            p_center_x = patch_x1 + (patch_x2 - patch_x1)//2
+            patch_x1, patch_x2, patch_y1, patch_y2 = patch_coordinates_from_center(
+                (p_center_x, p_center_y), roi_mask.shape, center_region_size)
 
-    return center_px1, center_px2, center_py1, center_py2
+        overlap_on_labels = roi_mask[patch_y1:patch_y2, patch_x1:patch_x2]
+        detected_labels.update(set(np.unique(overlap_on_labels)))
+        intersection = np.sum(overlap_on_labels > 0)
+        if intersection > 0:
+            tp.append(coords)
+        else:
+            fp.append(coords)
+    detected_labels = list(detected_labels)
+    gt_labels = np.unique(roi_mask)
+    for label in gt_labels:
+        if (label == 0) or (label in detected_labels):
+            continue
+        y, x = np.where(roi_mask == label)
+        y1, y2 = y.min(), y.max()
+        x1, x2 = x.min(), x.max()
+        w, h = x2 - x1, y2 - y1
+        center_x = x1 + w//2
+        center_y = y1 + h//2
+        radius_aprox = np.maximum(w, h) / 2
+        fn.append((center_x, center_y, radius_aprox))
+    return tp, fp, fn
 
 
 @njit(cache=True)
