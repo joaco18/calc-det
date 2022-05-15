@@ -1,10 +1,13 @@
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
+import seaborn as sns
 import math
 
 from general_utils.utils import min_max_norm
 from sklearn.metrics import auc
+
+cmap = plt.get_cmap("tab10")
 
 
 def simple_im_show(img, figsize=(10, 10)):
@@ -119,9 +122,9 @@ def plot_bboxes_over_image(image, bboxes, colors, types, thickness=2, alpha=0.2)
         img_bgr = cv2.addWeighted(img_bgr, beta, bbox_mask, alpha, 0.0)
     return img_bgr
 
+
 def plot_gabor_filters(filters, plots_columns=3):
     """Plots Gabor filter
-
     Args:
         filters (list[np.ndarray]): List of Gabot filters to plot
         plots_columns (int, optional): Number of columns in the subplots image.
@@ -130,21 +133,72 @@ def plot_gabor_filters(filters, plots_columns=3):
     plots_rows = int(np.ceil(len(filters)/plots_columns))
     fig, axs = plt.subplots(plots_rows, plots_columns, tight_layout=True, figsize=(10,10),)
     # fig.set_constrained_layout_pads(w_pad=0, h_pad=10, hspace=0, wspace=0)
-    for ax_idx, (r,c) in enumerate(np.indices((plots_columns, plots_rows)).reshape((2, plots_rows*plots_columns)).T):
+    for ax_idx, (r, c) in enumerate(np.indices((plots_columns, plots_rows)).reshape((2, plots_rows*plots_columns)).T):
         if ax_idx < len(filters):
             axs[c,r].imshow(filters[ax_idx], cmap='gray')
         axs[c,r].set_axis_off()
     
     plt.show()
-    
-    
-    
-def plot_froc(fpis, tprs, total_mC, label=''):
-    plt.figure(figsize=(8, 8))
+
+
+def plot_froc(
+    fpis: np.ndarray, tprs: np.ndarray, total_mC: int = None, label: str = '', new_figure: bool = True
+):
+    """Plot FROC curve
+    Args:
+        fpis (np.ndarray): Average false positives per image at different thresholds
+        tprs (np.ndarray): Sensitivity at different thresholds
+        total_mC (int, optional): Total number of ground truth mC. Defaults to None.
+        label (str, optional): Label of the line. Defaults to ''.
+        new_figure (bool, optional): Whether to generate a new figure or not, allows overlapping.
+            Defaults to True.
+    """
+    if new_figure:
+        plt.figure(figsize=(8, 8))
     plt.xlabel('FPpI')
-    plt.ylabel(f'TPR ({total_mC}) mC')
+    if total_mC is not None:
+        plt.ylabel(f'TPR ({total_mC}) mC')
+    else:
+        plt.ylabel('TPR')
     plt.title('FROC curve')
-    plt.plot(fpis, tprs)
+    plt.plot(fpis, tprs, c=cmap(0))
     plt.ylim((0, 1))
     plt.legend([f"{label} AUC: {auc(fpis, tprs)}"])
-    plt.show()
+    sns.despine()
+    if new_figure:
+        plt.show()
+
+
+def plot_bootstrap_froc(
+    fpis: np.ndarray, tprs: np.ndarray, std_tprs: np.ndarray,
+    total_mC: int = None, label: str = '', new_figure: bool = True
+):
+    """Plot FROC curve
+    Args:
+        fpis (np.ndarray): Average false positives per image at different thresholds
+        tprs (np.ndarray): Sensitivity at different thresholds
+        std_tprs (np.ndarray): Standard deviation of sensitivity at different thresholds
+            over the bootstrap samples.
+        total_mC (int, optional): Total number of ground truth mC. Defaults to None.
+        label (str, optional): Label of the line. Defaults to ''.
+        new_figure (bool, optional): Whether to generate a new figure or not, allows overlapping.
+            Defaults to True.
+    """
+    max_tprs = tprs + std_tprs
+    min_tprs = tprs - std_tprs
+
+    if new_figure:
+        plt.figure(figsize=(8, 8))
+    plt.xlabel('FPpI')
+    if total_mC is not None:
+        plt.ylabel(f'TPR ({total_mC}) mC')
+    else:
+        plt.ylabel('TPR')
+    plt.title('FROC curve')
+    plt.plot(fpis, tprs, c=cmap(0))
+    plt.fill_between(fpis, min_tprs, max_tprs, alpha=0.3, color=cmap(0))
+    plt.ylim((0, 1))
+    plt.legend([f"{label} AUC: {auc(fpis, tprs)}"])
+    sns.despine()
+    if new_figure:
+        plt.show()
