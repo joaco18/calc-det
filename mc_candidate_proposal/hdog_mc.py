@@ -15,6 +15,7 @@ from pathlib import Path
 from scipy import spatial
 from metrics.metrics_utils import compare_and_filter_pairs
 from general_utils.utils import min_max_norm
+from mc_candidate_proposal.candidate_utils import filter_dets_from_muscle_region
 
 
 logging.basicConfig(level=logging.INFO)
@@ -27,7 +28,7 @@ dog_parameters = {
     'n_scales': None,
     'dog_blob_th': 0.006,
     'dog_overlap': 1,
-    'dog_min_dist': 4,
+    'dog_min_dist': 0,
 }
 
 hessian_parameters = {
@@ -48,6 +49,7 @@ class HDoGCalcificationDetection:
         hessian_parameters: dict = hessian_parameters,
         processed_imgs_path: str = None,
         detections_path: str = None,
+        filter_muscle_region: bool = False
     ):
         """Constructor
 
@@ -60,8 +62,9 @@ class HDoGCalcificationDetection:
                     'sigma_ratio': 1.05,
                     'n_scales': None,
                     'dog_blob_th': 0.1,
-                    'dog_overlap': 1
-                }
+                    'dog_overlap': 1,
+                    'dog_min_dist': 0
+                } If dog_min_dist == 0 no filtering is done
             hessian_parameters (dict, optional): Parameters for the hessian filtering
                 of blobs. Defaults to:
                 hessian_parameters = {
@@ -77,6 +80,7 @@ class HDoGCalcificationDetection:
                 detections are going to be stored if required. If not specified it a
                 directory data/hdog_detections will be generated in the parent of
                 calc-det. Defaults to None.
+            filter_muscle_region
         """
         if processed_imgs_path is None:
             self.processed_imgs_path = \
@@ -104,6 +108,7 @@ class HDoGCalcificationDetection:
         self.method = hessian_parameters['method']
         self.h_th_div = hessian_parameters['hessian_th_divider']
         self.h_thr = hessian_parameters['hessian_threshold']
+        self.filter_muscle_region = filter_muscle_region
 
         # Generate paths for the stored precomputed steps based on parameters
         self.hdog_image_path = self.processed_imgs_path / \
@@ -134,7 +139,8 @@ class HDoGCalcificationDetection:
         return sigma_array
 
     def detect(
-        self, image: np.ndarray, img_id: int, use_preprocessed=True, save_results=True
+        self, image: np.ndarray, img_id: int, use_preprocessed: bool = True,
+        save_results: bool = True, muscle_mask: np.ndarray = None
     ):
         """Method to obtain the microcalcification detections
         Args:
@@ -145,12 +151,19 @@ class HDoGCalcificationDetection:
                 experiments. Defaults to True.
             save_results (bool, optional): Whether to store the final detections for
                 further use. Defaults to True.
+            muscle_mask (np.ndarray, optional): pectoral muscle mask. Only needed if
+                the filtering is indicated in the constructor
         Returns:
             detections (np.ndarray): Array with filtered detections as rows
                 (x, y, sigma) = (col, row, sigma)
             candidate_detections (np.ndarray): Array with raw detections as rows
                 (x, y, sigma) = (col, row, sigma)
         """
+        if self.filter_muscle_region:
+            assert muscle_mask is not None, \
+                'If filtering of muscle region is required the muscle region mask should'\
+                ' be provided'
+        
         image = min_max_norm(image, 1)
 
         self.use_preprocessed = use_preprocessed
@@ -187,12 +200,15 @@ class HDoGCalcificationDetection:
             detections = self.filter_blob_candidates(candidate_detections, hessian_eigval)
 
         detections = self.convert_yxs2xys(detections)
-        candidate_detections = self.convert_yxs2xys(candidate_detections)
+        # candidate_detections = self.convert_yxs2xys(candidate_detections)
 
         if save_results:
             self.store_final_detections(candidate_detections, detections)
 
-        return detections, candidate_detections
+        if self.filter_muscle_region:
+            detections = filter_dets_from_muscle_region(detections, muscle_mask)
+
+        return detections
 
     def detections_available(self):
         """Check if the detection file exists and it contains the desired image"""

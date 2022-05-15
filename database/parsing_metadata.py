@@ -27,6 +27,12 @@ def load_point(point_string: str, dtype: str = 'float'):
         raise Exception('dtype not supported to parse points')
 
 
+def load_muscle_roi_point(point_string: str):
+    return tuple(
+        [np.maximum(0, int(float(num))) for num in point_string.strip('{}').split(', ')]
+    )
+
+
 def to_snake_case(string: str):
     return re.sub(r'(?<!^)(?=[A-Z])', '_', string).lower()
 
@@ -49,6 +55,70 @@ def extract_bbox(points: List[np.ndarray]):
     center_coords = \
         (bbox_coords[0][0] + int(width/2), bbox_coords[0][1] + int(heigth/2))
     return bbox_coords, center_coords
+
+
+def read_pect_musc_xml(filename: Path, im_shape: tuple, side: str):
+    """
+    Parse the pectoral muscle metadata xml
+    Args:
+        filename (Path): Path to the xml file.
+        im_shape (tuple): Dimensions of the image.
+    Returns:
+        pectoral_muscle_mask (np.ndarray): Mask of the pectoral_muscle
+    """
+    label = 255
+    pect_muscle_mask = np.zeros(im_shape, dtype='uint8')
+    with open(filename, 'rb') as xml:
+        # Parse the xml file
+        muscle_dict = plistlib.load(xml, fmt=plistlib.FMT_XML)
+        if 'Images' in muscle_dict.keys():
+            rois = muscle_dict['Images'][0]['ROIs']
+            for roi in rois:
+                if roi['Name'] != 'Pectoral Muscle':
+                    logging.warning(
+                        f'Roi ignored in file {filename}, roi name ({roi["Name"]}) '
+                        f'not pectoral muscle')
+                    continue
+                points = roi['Point_px']
+                if roi['NumberOfPoints'] != len(points):
+                    logging.warning(
+                        f'Roi ignored in file {filename}, there are missing points in the ROI')
+                    continue
+                corner = (im_shape[1], 0) if side == 'R' else (0, 0)
+                points = [corner] + [load_point(point, 'int') for point in points]
+                if len(points) <= 2:
+                    for point in points:
+                        try:
+                            pect_muscle_mask[int(point[1]), int(point[0])] = label
+                        except Exception as e:
+                            logging.warning(
+                                f'ROI {roi["IndexInImage"]} of image '
+                                f'{roi["img_id"]} not stored,'
+                                f'coordinates out of boundary. Exception {e}. '
+                                f'Point: {point}. Image size {pect_muscle_mask.shape}'
+                            )
+                else:
+                    cv2.fillPoly(
+                        pect_muscle_mask, pts=[np.asarray(points, dtype='int')], color=label)
+        elif 'ROIPoints' in muscle_dict.keys():
+            corner = (im_shape[1], 0) if side == 'R' else (0, 0)
+            roi_points = \
+                [corner] + [load_muscle_roi_point(point) for point in muscle_dict['ROIPoints']]
+            if len(roi_points) <= 2:
+                for point in roi_points:
+                    try:
+                        pect_muscle_mask[int(point[1]), int(point[0])] = label
+                    except Exception as e:
+                        logging.warning(
+                            f'ROI {roi["IndexInImage"]} of image '
+                            f'{roi["img_id"]} not stored,'
+                            f'coordinates out of boundary. Exception {e}. '
+                            f'Point: {point}. Image size {pect_muscle_mask.shape}'
+                        )
+            else:
+                cv2.fillPoly(
+                    pect_muscle_mask, pts=[np.asarray(roi_points, dtype='int')], color=label)
+    return pect_muscle_mask
 
 
 def readxml(filename: Path, metadata_img: dict, im_shape: tuple):
@@ -123,7 +193,6 @@ def readxml(filename: Path, metadata_img: dict, im_shape: tuple):
                     try:
                         mask[int(point[1]), int(point[0])] = label
                     except Exception as e:
-                        print('entra en warning')
                         logging.warning(
                             f'ROI {roi["IndexInImage"]} of image '
                             f'{roi["img_id"]} not stored,'
@@ -249,13 +318,13 @@ def format_roi_df(rois_df: pd.DataFrame):
         'Calcification': 'calcification',
         'Cluster': 'cluster',
         'Mass': 'mass',
-        'Point 3': 'unknown',
+        'Point 3': 'calcification',
         'Espiculated Region': 'spiculated_region',
         'Spiculated Region': 'spiculated_region',
         'Distortion': 'distortion',
         'Asymmetry': 'asymmetry',
-        'Unnamed': 'unknown',
-        'Point 1': 'unknown',
+        'Unnamed': 'calcification',
+        'Point 1': 'unkown',
         'Calcifications': 'calcification',
         'Assymetry': 'asymmetry',
         'Spiculated region': 'spiculated_region',
@@ -310,6 +379,9 @@ def main():
     parser.add_argument(
         '--cb', dest='crop_breast', action='store_true',
         help='Just save the breast region in the pngs.')
+    parser.add_argument(
+        '--pect-musc-mask', dest='pectoral_muscle_mask', action='store_true',
+        help='Retrieve the pectoral muscle mask')
     args = parser.parse_args()
 
     if not bool(args.verbose):
@@ -323,11 +395,14 @@ def main():
     png_folder = base_path/'AllPNGs'/'full_imgs' if args.pngs_dir is None else Path(args.pngs_dir)
     masks_folder = \
         base_path/'AllMasks'/'full_imgs' if args.masks_dir is None else Path(args.masks_dir)
+    muscle_masks_folder = base_path / 'AllMasks'/'muscle_masks'
     dcm_folder = base_path / 'AllDICOMs'
     xml_folder = base_path / 'AllXML'
+    muscle_xml_folder = base_path / 'PectoralMuscle' / 'Pectoral Muscle XML'
 
     masks_folder.mkdir(parents=True, exist_ok=True)
     png_folder.mkdir(parents=True, exist_ok=True)
+    muscle_masks_folder.mkdir(parents=True, exist_ok=True)
 
     # Load and adjust the provided metadata dataframe
     df_excel = pd.read_excel(base_path / 'INbreast.xls')
@@ -347,7 +422,8 @@ def main():
     images_df = pd.DataFrame(columns=[
         'img_id', 'n_rois', 'side', 'view', 'filename', 'acr', 'artifact', 'birads',
         'case_id', 'finding_notes', 'lesion_annot', 'pectoral_muscle', 'mass',
-        'micros', 'distortion', 'asymmetry', 'breast_bbox', 'partition', 'img_size'
+        'micros', 'distortion', 'asymmetry', 'breast_bbox', 'partition', 'img_size',
+        'muscle_mask'
     ])
 
     # Load the predefined training set
@@ -378,23 +454,32 @@ def main():
         xml_filepath = xml_folder / f'{img_id}.xml'
         if xml_filepath.exists():
             images_row, roi_df, mask = readxml(xml_filepath, metadata_img, im_array.shape)
+            for row in roi_df.iterrows():
+                _, roi_df.at[row[0], 'radius'] = cv2.minEnclosingCircle(
+                    np.asarray(roi_df.at[row[0], 'Point_px']))
         else:
             images_row = {'n_rois': 0, 'breast_bbox': None}
             images_row.update(metadata_img)
+
+        pectoral_muscle_available = False
+        if args.pectoral_muscle_mask:
+            pect_musc_xml_filepath = muscle_xml_folder / f'{img_id}_muscle.xml'
+            if pect_musc_xml_filepath.exists():
+                pectoral_muscle_available = True
+                pect_musc_mask = read_pect_musc_xml(
+                    pect_musc_xml_filepath, im_array.shape, metadata_img['side'])
+        images_row['muscle_mask'] = pectoral_muscle_available
 
         if args.crop_breast:
             # If indicated extract the breast bbox and update rois coords
             bbox, _ = get_breast_bbox(im_array.copy())
             im_array = im_array[bbox[0][1]:bbox[1][1], bbox[0][0]:bbox[1][0]]
             mask = mask[bbox[0][1]:bbox[1][1], bbox[0][0]:bbox[1][0]]
+            if pectoral_muscle_available:
+                pect_musc_mask = pect_musc_mask[bbox[0][1]:bbox[1][1], bbox[0][0]:bbox[1][0]]
             if xml_filepath.exists():
                 roi_df = update_rois_coords(roi_df.copy(), bbox.copy())
             images_row['breast_bbox'] = bbox
-        else:
-            for row in roi_df.iterrows():
-                _, roi_df.at[row[0], 'radius'] = cv2.minEnclosingCircle(
-                    np.asarray(roi_df.at[row[0], 'Point_px'])
-                )
 
         # Update dataframes and write mask and png version of the image
         png_name = png_folder/f'{img_id}.png'
@@ -405,6 +490,10 @@ def main():
         # im_array = (im_array - im_array.min()) / (im_array.max() - im_array.min()) * 255
         # im_array = im_array.astype('uint8')
         cv2.imwrite(str(png_name), im_array)
+
+        if pectoral_muscle_available:
+            cv2.imwrite(
+                str(muscle_masks_folder/f'{img_id}_pectoral_muscle_mask.png'), pect_musc_mask)
 
         if xml_filepath.exists():
             rois_df = rois_df.append(roi_df, ignore_index=True)
