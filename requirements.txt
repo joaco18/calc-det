@@ -1,12 +1,12 @@
 pydicom == 2.2.2
 numpy
+# opencv-python == 4.5.4.60
 opencv-contrib-python == 4.5.5.64
 pandas
 scikit-learn
 matplotlib
 SimpleITK == 2.1.1
 scikit-image == 0.19.2
-pyradiomics == 3.0.1
 h5py
 pyarrow
 pywavelets == 1.1.1

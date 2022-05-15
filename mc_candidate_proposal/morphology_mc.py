@@ -4,6 +4,7 @@ from skimage.measure import label
 from pathlib import Path
 from scipy import spatial
 from numba import njit
+from mc_candidate_proposal.candidate_utils import filter_dets_from_muscle_region
 
 
 @njit
@@ -22,16 +23,41 @@ def filter_by_distance(centers, pairs):
 class MorphologyCalcificationDetection:
     def __init__(
         self, rbd_img_path: str, threshold: float, min_distance: int, area: int,
-        store_intermediate: bool = True
+        store_intermediate: bool = True, filter_muscle_region: bool = False
     ):
+        """Constructor for MorphologyCalcificationDetection class
+        Args:
+            rbd_img_path (str): path for the reconstructed by dilation image
+            threshold (float): quatile to use to threshold intensities anfter rbd
+            min_distance (int): minimum distance between detections
+            area (int): maximum area of a mc
+            store_intermediate (bool, optional): whether to store rbd to accelerate tests.
+                Defaults to True.
+            filter_muscle_region (bool, optional): whether to filter candidates inside the
+                pectoral muscle region. Defaults to False.
+        """
         self.rbd_img_path = Path(rbd_img_path)
         self.threshold = threshold
         self.store_intermediate = store_intermediate
         self.min_distance = min_distance
         self.area = area
         self.dilation_k_size = 14
+        self.filter_muscle_region = filter_muscle_region
 
-    def detect(self, image: np.ndarray, image_id: int):
+    def detect(self, image: np.ndarray, image_id: int, muscle_mask: np.ndarray = None):
+        """Detects mC for a given image
+        Args:
+            image (np.ndarray): image to process
+            image_id (int): id
+            muscle_mask (np.ndarray, optional): pectoral muscle mask. Only necessary
+                if the filtering is indicated in constructor. Defaults to None
+        Returns:
+            candidate_blobs (np.ndarray): [x, y, radius]
+        """
+        if self.filter_muscle_region:
+            assert muscle_mask is not None, \
+                'If filtering of muscle region is required the muscle region mask should'\
+                ' be provided'
         self.image = image
         # load or create reconstructed by dialation image
         rbd_image = None
@@ -62,6 +88,11 @@ class MorphologyCalcificationDetection:
         # connected components extraction and filtering
         markers = self.connected_components_extraction(thr_rbd)
         candidate_blobs = self.connected_components_filtering(markers)
+
+        if self.filter_muscle_region:
+            candidate_blobs = filter_dets_from_muscle_region(
+                candidate_blobs.astype(int), muscle_mask)
+
         return candidate_blobs
 
     def reconstruction_by_dialation(

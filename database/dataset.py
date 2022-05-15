@@ -85,6 +85,7 @@ class INBreast_Dataset(Dataset):
         normalize: str = None,
         n_jobs: int = -1,
         cropped_imgs: bool = True,
+        use_muscle_mask: bool = False
     ):
         """
         Constructor of INBreast_Dataset class
@@ -99,6 +100,7 @@ class INBreast_Dataset(Dataset):
                 Defaults to ["*"], which includes all of them
             lesion_types (List[str], optional): List of lesion types, subset of
                 ['asymmetry', 'calcification', 'cluster', 'distortion', 'mass', 'normal'].
+                If None, no filtering is applied
             transform (List[str], optional): List of transformations. Defaults to None.
             data_aug (List[str], optional): List of data augmentation procedures.
                 Defaults to None.
@@ -109,10 +111,10 @@ class INBreast_Dataset(Dataset):
                 example or not. Defaults to False.
             level (str, optional): Whether to generate a dataset at 'rois' or 'image' level.
                 Defaults to 'image'.
-            partitions (List[str]): Select predefined sets, subset from ['train', 'validation', 'test'].
-                Defaults to ['train', 'validation', 'test']
+            partitions (List[str]): Select predefined sets, subset from 
+                ['train', 'validation', 'test']. Defaults to ['train', 'validation', 'test']
             max_lesion_diam_mm (float): Maximum horizontal or vertical diameter allowed for the
-                lesion.
+                lesion. If None, no filtring is applied
             extract_patches (bool, optional): Whether to extract the rois or not. Defaults to True.
             extract_patches_method (str, optional): Which method to use in the rois extraction.
                 One of ['all', 'centered']. Defaults to 'all'.
@@ -120,11 +122,16 @@ class INBreast_Dataset(Dataset):
             stride (Tuple[int], optional): If rois are extracted with 'all' method, define the
                 stride to use. Defaults to (1, 1).
             min_breast_fraction_roi (float, optional): Minimum percentage of breast to consider
-                the roi as a valid example. Defaults to 0.
+                the roi as a valid example. If muscle masks are used, this same criteria will
+                apply to the region of muscle. Defaults to 0.
             normalize (str, optional): ['min]. Defaults to None.
             n_jobs (int, optional): Number of processes to use in parallel operations.
                 Defaults to -1
             cropped_imgs (bool): whether the images to read has the breast region cropped.
+            use_muscle_mask (bool): whether to use the pectoral muscle masks or not.
+                If image level, simply the pectoral mask is returned. If roi level, the 
+                pectoral mask is used to define the "in breast" patches, considering
+                pectoral muscle as if it was background with min_breast_fraction_roi
         """
         super(INBreast_Dataset, self).__init__()
 
@@ -136,6 +143,7 @@ class INBreast_Dataset(Dataset):
         self.full_img_path = imgpath/'full_imgs'
         self.img_df_path = dfpath/'images_metadata.csv'
         self.full_mask_path = mask_path/'full_imgs'
+        self.full_muscle_mask_path = mask_path/'muscle_masks'
 
         # Work on rois df
         self.patch_img_path = imgpath.parent.parent.parent.parent/'data_rois'/'patches'
@@ -143,6 +151,7 @@ class INBreast_Dataset(Dataset):
         self.patch_mask_path = imgpath.parent.parent.parent.parent/'data_rois'/'patches_masks'
 
         # Configurations
+        self.use_muscle_mask = use_muscle_mask
         self.level = level
         self.views = views
         self.partitions = partitions
@@ -151,7 +160,8 @@ class INBreast_Dataset(Dataset):
         self.lesions_mask = return_lesions_mask
         self.normalize = normalize
         self.lesion_types = lesion_types
-        self.max_lesion_diam_px = int(max_lesion_diam_mm / 0.07)
+        self.max_lesion_diam_px = \
+            int(max_lesion_diam_mm / 0.07) if (max_lesion_diam_mm is not None) else None
         self.cropped_imgs = cropped_imgs
 
         # Load data
@@ -166,9 +176,11 @@ class INBreast_Dataset(Dataset):
         self.filter_excluded_cases()
         self.filter_stored_rois()
         self.filter_by_partition()
-        self.filter_by_lesion_size()
+        if self.max_lesion_diam_px is not None:
+            self.filter_by_lesion_size()
         self.limit_to_selected_views()
-        self.filter_by_lesion_type()
+        if self.lesion_types is not None:
+            self.filter_by_lesion_type()
         self.add_image_label_to_image_df()
         self.flip_coordinates()
 
@@ -279,6 +291,7 @@ class INBreast_Dataset(Dataset):
         in self.df['lesion_type']
         """
         # filter rois df
+        self.rois_df['lesion_type'] = self.rois_df['lesion_type'].fillna(value='calcification')
         self.rois_df = self.rois_df.loc[self.rois_df.lesion_type.isin(self.lesion_types), :]
         self.rois_df.reset_index(inplace=True, drop=True)
         # filter imgs df
@@ -337,12 +350,19 @@ class INBreast_Dataset(Dataset):
             mask = cv2.imread(str(mask_path), cv2.IMREAD_GRAYSCALE)
         else:
             mask = np.zeros(image.shape)
-
+        if self.use_muscle_mask:
+            muscle_mask_path = self.full_muscle_mask_path / f'{img_id}_pectoral_muscle_mask.png'
+            if muscle_mask_path.exists():
+                muscle_mask = cv2.imread(str(muscle_mask_path), cv2.IMREAD_GRAYSCALE)
+            else:
+                muscle_mask = np.zeros(image.shape)
         side = self.img_df['side'].iloc[idx]
         if side == 'R':
             image = cv2.flip(image, 1)
             if mask.any():
                 mask = cv2.flip(mask, 1)
+            if self.use_muscle_mask and muscle_mask.any():
+                muscle_mask = cv2.flip(muscle_mask, 1)
 
         # Extract patches equally from image and the mask
         image = padd_image(image, self.patch_size)
@@ -382,8 +402,16 @@ class INBreast_Dataset(Dataset):
             if lt not in patches_descr.columns:
                 patches_descr[lt] = 0
 
-        # Get the percentage of breast in the roi
-        breast_pixels = np.array([(roi != 0).sum() for roi in image_patches])
+        # Get the percentage of breast in the roi. If the muscle mask is used this cosideres
+        # brest the non-muscle region inside the breast
+        if self.use_muscle_mask:
+            breast_patches = slice_image(
+                np.where(muscle_mask == 0, image, 0),
+                window_size=self.patch_size, stride=self.stride)
+            breast_pixels = np.array([(roi != 0).sum() for roi in breast_patches])
+            del breast_patches
+        else:
+            breast_pixels = np.array([(roi != 0).sum() for roi in image_patches])
         patches_descr['breast_fraction'] = breast_pixels / \
             (image_patches.shape[1]*image_patches.shape[2])
 
@@ -517,11 +545,19 @@ class INBreast_Dataset(Dataset):
         else:
             mask = np.zeros(image.shape)
 
+        if self.use_muscle_mask:
+            muscle_mask_path = self.full_muscle_mask_path / f'{img_id}_pectoral_muscle_mask.png'
+            if muscle_mask_path.exists():
+                muscle_mask = cv2.imread(str(muscle_mask_path), cv2.IMREAD_GRAYSCALE)
+            else:
+                muscle_mask = np.zeros(image.shape)
         side = self.img_df['side'].iloc[idx]
         if side == 'R':
             image = cv2.flip(image, 1)
             if mask.any():
                 mask = cv2.flip(mask, 1)
+            if self.use_muscle_mask and muscle_mask.any():
+                muscle_mask = cv2.flip(muscle_mask, 1)
 
         # Filter rois already filtered from the rois_df
         present_indx = self.rois_df.loc[self.rois_df.img_id == img_id, 'index_in_image'].tolist()
@@ -553,10 +589,15 @@ class INBreast_Dataset(Dataset):
             # Crop the patch
             image_patch = image[patch_y1:patch_y2, patch_x1:patch_x2]
             mask_patch = mask[patch_y1:patch_y2, patch_x1:patch_x2]
-
-            # Get the percentage of breast in the patch
-            breast_fraction = \
-                ((image_patch != 0).sum()) / (image_patch.shape[0] * image_patch.shape[1])
+            if self.use_muscle_mask:
+                muscle_mask_patch = muscle_mask[patch_y1:patch_y2, patch_x1:patch_x2]
+                muscle_mask_patch = np.where(muscle_mask_patch > 0, 0, 1)
+                breast_fraction = (
+                    (((image_patch * muscle_mask_patch) != 0).sum()) /
+                    (image_patch.shape[0] * image_patch.shape[1]))
+            else:
+                breast_fraction = \
+                    ((image_patch != 0).sum()) / (image_patch.shape[0] * image_patch.shape[1])
             if breast_fraction < self.min_breast_frac:
                 continue
 
@@ -643,8 +684,8 @@ class INBreast_Dataset(Dataset):
                 else:
                     mask = cv2.imread(str(mask_path), cv2.IMREAD_GRAYSCALE)
                     mask = self.adjust_mask_to_selected_lesions(mask, idx)
-                if side == 'R':
-                    mask = cv2.flip(mask, 1)
+                    if side == 'R':
+                        mask = cv2.flip(mask, 1)
             else:
                 mask_filename = self.df['mask_filename'].iloc[idx]
                 if mask_filename != 'empty_mask':
@@ -659,12 +700,25 @@ class INBreast_Dataset(Dataset):
             holes = np.where(holes == 0, 255, 0)
             sample['lesion_mask'] = mask + holes.astype('uint8')
 
+        if self.use_muscle_mask:
+            if self.level == 'image':
+                muscle_mask_path = self.full_muscle_mask_path / \
+                    f'{self.df["img_id"].iloc[idx]}_pectoral_muscle_mask.png'
+                if not muscle_mask_path.exists():
+                    muscle_mask = np.zeros(img.shape)
+                else:
+                    muscle_mask = cv2.imread(str(muscle_mask_path), cv2.IMREAD_GRAYSCALE)
+                    if side == 'R':
+                        muscle_mask = cv2.flip(muscle_mask, 1)
+                sample['muscle_mask'] = muscle_mask
+
         # Apply transformations
         # Warning: normalization should be indicated as a Transformation
         if self.transform is not None:
             transform_seed = np.random.randint(self.seed)
             random.seed(transform_seed)
             sample["img"] = self.transform(sample["img"])
+            # TODO: Check interpolation method when this is used
             if self.lesions_mask:
                 random.seed(transform_seed)
                 sample["lesion_mask"] = self.transform(sample["lesion_mask"])
@@ -674,6 +728,7 @@ class INBreast_Dataset(Dataset):
             transform_seed = np.random.randint(self.seed)
             random.seed(transform_seed)
             sample["img"] = self.data_aug(sample["img"])
+            # TODO: Check interpolation method when this is used
             if self.lesion_mask:
                 for i in sample["lesion_mask"].keys():
                     random.seed(transform_seed)
