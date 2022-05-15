@@ -28,5 +28,7 @@ def balance_candidates(
 
 
 def filter_dets_from_muscle_region(candidates: np.ndarray, muscle_mask: np.ndarray):
+    if not muscle_mask.any():
+        return candidates
     muscle_mask = np.where(muscle_mask > 0, False, True)
     return candidates[muscle_mask[candidates[:, 1], candidates[:, 0]]]

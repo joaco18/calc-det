@@ -90,7 +90,8 @@ class MorphologyCalcificationDetection:
         candidate_blobs = self.connected_components_filtering(markers)
 
         if self.filter_muscle_region:
-            candidate_blobs = filter_dets_from_muscle_region(candidate_blobs, muscle_mask)
+            candidate_blobs = filter_dets_from_muscle_region(
+                candidate_blobs.astype(int), muscle_mask)
 
         return candidate_blobs
 
