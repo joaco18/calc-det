@@ -169,7 +169,7 @@ def plot_froc(
     plt.plot(fpis, tprs, c=cmap(0))
     plt.xlim(0, 50)
     plt.ylim((0, 1))
-    plt.legend([f"{label} AUC: {auc(fpis, tprs)}"])
+    plt.legend([f"{label} AUC: {auc(fpis/fpis.max(), tprs)}"])
     sns.despine()
     if new_figure:
         plt.show()
@@ -210,7 +210,7 @@ def plot_bootstrap_froc(
     plt.xlim(0, 50)
     plt.fill_between(fpis, min_tprs, max_tprs, alpha=0.3, color=cmap(0))
     plt.ylim((0, 1))
-    plt.legend([f"{label} AUC: {auc(fpis, tprs)}"])
+    plt.legend([f"{label} AUC: {auc(fpis/fpis.max(), tprs)}"])
     sns.despine()
     if new_figure:
         plt.show()
