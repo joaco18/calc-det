@@ -1,4 +1,5 @@
 # data
+cadavers/
 models/bria2014/feature_extraction_cv_adapt.py
 data/Bria/features
 data/train_img_filename.pkl
