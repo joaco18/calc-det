@@ -169,11 +169,6 @@ def plot_froc(
         new_figure (bool, optional): Whether to generate a new figure or not, allows overlapping.
             Defaults to True.
     """
-    # limit point calculation till fpis<=50
-    area_lim_mask = np.array(fpis)<=50
-    fpis = np.array(fpis)[area_lim_mask]
-    tprs = np.array(tprs)[area_lim_mask]
-    
     if new_figure:
         plt.figure(figsize=(8, 8))
     plt.xlabel('FPpI')
@@ -183,9 +178,8 @@ def plot_froc(
         plt.ylabel('TPR')
     plt.title('FROC curve')
     plt.plot(fpis, tprs, c=cmap(0))
-    plt.xlim(0, 50)
     plt.ylim((0, 1))
-    plt.legend([f"{label} AUC: {auc(fpis/fpis.max(), tprs)}"])
+    plt.legend([f"{label} AUC: {auc(fpis, tprs)}"])
     sns.despine()
     if new_figure:
         plt.show()
@@ -193,7 +187,8 @@ def plot_froc(
 
 def plot_bootstrap_froc(
     fpis: np.ndarray, tprs: np.ndarray, std_tprs: np.ndarray,
-    total_mC: int = None, label: str = '', new_figure: bool = True
+    total_mC: int = None, label: str = '', new_figure: bool = True,
+    cut_on_50fpi: bool = True
 ):
     """Plot FROC curve
     Args:
@@ -205,12 +200,14 @@ def plot_bootstrap_froc(
         label (str, optional): Label of the line. Defaults to ''.
         new_figure (bool, optional): Whether to generate a new figure or not, allows overlapping.
             Defaults to True.
+        cut_on_50fpi (bool): whether to cut the froc l¿plt at 50fpi. Defaults to True
     """
     # limit point calculation till fpis<=50
-    area_lim_mask = np.array(fpis)<=50
-    fpis = np.array(fpis)[area_lim_mask]
-    tprs = np.array(tprs)[area_lim_mask]
-    
+    if cut_on_50fpi:
+        area_lim_mask = np.array(fpis)<=50
+        fpis = np.array(fpis)[area_lim_mask]
+        tprs = np.array(tprs)[area_lim_mask]
+
     max_tprs = tprs + std_tprs
     min_tprs = tprs - std_tprs
 
