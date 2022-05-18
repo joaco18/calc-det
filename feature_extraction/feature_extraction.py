@@ -11,19 +11,22 @@ import general_utils.utils as utils
 from feature_extraction.haar_features.haar_extractor import \
     extract_haar_feature_image_skimage, HaarFeatureExtractor
 
+import feature_extraction.haar_features.haar_modules as hm
+
 # machine epsillon used to avoid zero errors
 epsillon = np.finfo(float).eps
 
 wavelet_decomp_names = ['LL1', 'LH1', 'HL1', 'HH1', 'LL2', 'LH2', 'HL2', 'HH2']
 glcm_decompositions = ['LH1', 'HL1', 'HH1']
-skimage_glcm_features = ['energy', 'correlation', 'homogeneity', 'contrast', 'dissimilarity']
+skimage_glcm_features = ['correlation',
+                         'homogeneity', 'contrast', 'dissimilarity']
 
 logging.basicConfig(level=logging.INFO)
 
 
 class CandidatesFeatureExtraction:
     def __init__(self, patch_size: int, fos=True, gabor_params=None, wavelet_params=None,
-                 haar_params=None, center_crop_size=7):
+                 haar_params=None):
         """Defines which features to extract
 
         Args:
@@ -34,15 +37,13 @@ class CandidatesFeatureExtraction:
             wavelet_params (dict): parameters for wavelt glcm f.e.
                 needs key 'angle' with a list of angles to calculate GLCMs for.
             haar_params (dict): parameters for haar features extractor
-            center_crop_size (int): size of the patch center crop to consider
-                when looking for intersection in mask while defining a TP
+
         """
         self.patch_size = patch_size
         self.fos = fos
         self.gabor_params = gabor_params
         self.wavelet_params = wavelet_params
         self.haar_params = haar_params
-        self.center_crop_size = center_crop_size
 
         # used to store calculated features names
         self.get_feature_names()
@@ -135,7 +136,8 @@ class CandidatesFeatureExtraction:
             candidates_features.append(features)
         candidates_features = np.asarray(candidates_features, dtype=object)
         if self.haar_params:
-            candidates_features = np.concatenate([features_haar, candidates_features], axis=1)
+            candidates_features = np.concatenate(
+                [features_haar, candidates_features], axis=1)
         return candidates_features
 
     def haar_features_extraction(self, image: np.ndarray, candidates: np.ndarray):
@@ -147,7 +149,8 @@ class CandidatesFeatureExtraction:
         Returns:
             np.ndarray: with feature values
         """
-        images = utils.img_to_patches_array(image, candidates, self.haar_params['patch_size'])
+        images = utils.img_to_patches_array(
+            image, candidates, self.haar_params['patch_size'])
 
         # Generate a list of features for easy access for feature selection
         if ((self.haar_params['skimage']['feature_coord'] is None) and
@@ -181,10 +184,12 @@ class CandidatesFeatureExtraction:
         self.our_haar_feature_types_h = haarfe.features_h
         self.our_haar_feature_types_r = haarfe.features_r
 
-        have_our_haars = (len(haarfe.features_h) != 0) or (len(haarfe.features_r) != 0)
+        have_our_haars = (len(haarfe.features_h) != 0) or (
+            len(haarfe.features_r) != 0)
         if have_our_haars:
             # Preallocate results holder
-            X_extension = np.empty((len(candidates), len(haarfe.features_h)+len(haarfe.features_r)))
+            X_extension = np.empty((len(candidates), len(
+                haarfe.features_h)+len(haarfe.features_r)))
 
             # Obtain the features
             for k, img in enumerate(images):
@@ -192,9 +197,12 @@ class CandidatesFeatureExtraction:
 
         # Adjust columns names if necessary
         if 'haar' not in self.feature_names[0]:
-            haar_feature_names = [f'haar_{i}' for i in range(len(self.skimage_haar_feature_coords))]
-            our_h_haar_feature_names = [f'hor_haar_{i}' for i in range(len(haarfe.features_h))]
-            our_r_haar_feature_names = [f'rot_haar_{i}' for i in range(len(haarfe.features_r))]
+            haar_feature_names = [f'haar_{i}' for i in range(
+                len(self.skimage_haar_feature_coords))]
+            our_h_haar_feature_names = [
+                f'hor_haar_{i}' for i in range(len(haarfe.features_h))]
+            our_r_haar_feature_names = [
+                f'rot_haar_{i}' for i in range(len(haarfe.features_r))]
             self.feature_names = \
                 haar_feature_names + our_h_haar_feature_names + \
                 our_r_haar_feature_names + self.feature_names
@@ -296,8 +304,7 @@ class CandidatesFeatureExtraction:
                              kurtosis(img_patch.ravel())])
         return np.asarray(features)
 
-    @staticmethod
-    def get_wavelet_features(patch: np.ndarray):
+    def get_wavelet_features(self, patch: np.ndarray):
         """ Extracts features from an patch's haar 2-level wavelet
         decomposition (8 decompositions)
         First order statistics: mean, skewness, standard deviation, kurtosis,
@@ -320,10 +327,38 @@ class CandidatesFeatureExtraction:
                 CandidatesFeatureExtraction.wav_first_order(single_decomp, idx))
 
         for idx, single_decomp in enumerate(eight_decomp[1:4]):
-            wavelet_params.extend(
-                CandidatesFeatureExtraction.wav_glcm_features(single_decomp, idx))
+            wavelet_params.extend(self.wav_glcm_features(single_decomp, idx))
 
         return np.asarray(wavelet_params)
+
+    def wav_glcm_features(self, single_decomp: np.ndarray, idx: int):
+        """Extracts features from a Gray Level Co-occurence Matrix (D=5,theta = 0)
+            from a single wavelet decomposition
+        Features: energy, correlation, homogeneity, contrast, dissimilarity,
+            (DROPPED: ASM, entropy, uniformity, sum of squares, autocorrelation)
+
+        Args:
+            single_decomp (np.ndarray): single decomposition from list [LH1, HL1,HH1]
+            Note: expected to be used on three decompositions for correct feature naming
+            idx (int): index of the decomposition from list above
+
+        Returns:
+            glcm_features (dict): dictionary containing glcm features
+        """
+
+        all_glcm_decomp = graycomatrix(utils.min_max_norm(
+            single_decomp, max_val=255).astype(np.uint8), [2], self.wavelet_params['angles'], normed=True)
+
+        glcm_features = []
+
+        
+        for feature_name in skimage_glcm_features:
+            feature_results = graycoprops(
+                all_glcm_decomp, prop=feature_name)
+            for fv in feature_results.ravel():
+                glcm_features.append(fv)
+
+        return np.asarray(glcm_features)
 
     @staticmethod
     def get_wavelet_decomp(patch: np.ndarray, wavelet_type='haar'):
@@ -373,32 +408,3 @@ class CandidatesFeatureExtraction:
                            patch_entropy,
                            patch_unif,
                            patch_relsmooth])
-
-    @staticmethod
-    def wav_glcm_features(single_decomp: np.ndarray, idx: int):
-        """Extracts features from a Gray Level Co-occurence Matrix (D=5,theta = 0)
-            from a single wavelet decomposition
-        Features: energy, correlation, homogeneity, contrast, dissimilarity,
-            (DROPPED: ASM, entropy, uniformity, sum of squares, autocorrelation)
-
-        Args:
-            single_decomp (np.ndarray): single decomposition from list [LH1, HL1,HH1]
-            Note: expected to be used on three decompositions for correct feature naming
-            idx (int): index of the decomposition from list above
-
-        Returns:
-            glcm_features (dict): dictionary containing glcm features
-        """
-
-
-        single_decomp_glcm = graycomatrix(utils.min_max_norm(
-            single_decomp, max_val=255).astype(np.uint8), [2], [0], normed=True)
-
-        glcm_features_1 = []
-        for feature_name in skimage_glcm_features:
-            feature_results = graycoprops(
-                single_decomp_glcm, prop=feature_name)
-            for fv in feature_results.ravel():
-                glcm_features_1.append(fv)
-
-        return np.asarray(glcm_features_1)
