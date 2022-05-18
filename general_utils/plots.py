@@ -4,8 +4,11 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import math
 
-from general_utils.utils import min_max_norm
 from sklearn.metrics import auc
+from matplotlib.lines import Line2D
+from scipy.ndimage.morphology import binary_fill_holes
+from feature_extraction.haar_features.haar_modules import Feature
+import general_utils.utils as utils
 
 cmap = plt.get_cmap("tab10")
 
@@ -53,15 +56,27 @@ def plot_blobs(image: np.ndarray, image_blobs: np.ndarray, ax=None):
         plt.show()
 
 
-def plot_blobs2(image, blobs_a, blobs_b, ax=None):
+def plot_blobs_2_sets(
+    image: np.ndarray, blobs_a: np.ndarray, blobs_b: np.ndarray, ax=None,
+    label_a: str = 'set 1', label_b: str = 'set 2'
+):
     """Overlay two sets of blob circles over the image.
     Args:
         image (np.ndarray): image to which overlay the blobs
-        tp_blobs (np.ndarray): blobs to overlay over the image in red
+        blobs_a (np.ndarray): blobs to overlay over the image in red
             each row is a candidate (x, y, radius)
-        gt_blobs (np.ndarray): blobs to overlay over the image in green.
+        blobs_b (np.ndarray): blobs to overlay over the image in green.
             each row is a candidate (x, y, radius)
+        ax (ax element, optional): To use in subplots. Defaults to None.
+        label_a (str, optional): Name for the first set. Defaults to 'set 1'.
+        label_b (str, optional): Name for the second set. Defaults to 'set 2'.
     """
+    legend_elements = [
+        Line2D(
+            [0], [0], marker='o', ls='None', c='w', label=label_a, mfc='k', mec='r', ms=10, mew=2),
+        Line2D(
+            [0], [0], marker='o', ls='None', c='w', label=label_b, mfc='k', mec='g', ms=10, mew=2)
+    ]
     if ax is None:
         f, ax = plt.subplots(1, 1, figsize=(20, 20))
     # image = min_max_norm(image, 255)
@@ -80,6 +95,7 @@ def plot_blobs2(image, blobs_a, blobs_b, ax=None):
             image, (x, y), int(math.sqrt(2) * r)+25, (0, 255, 0), 2
         )
     ax.imshow(image)
+    ax.legend(handles=legend_elements, loc='upper right', frameon=False, labelcolor='w')
     plt.axis('off')
     plt.tight_layout()
     if ax is None:
@@ -131,18 +147,18 @@ def plot_gabor_filters(filters, plots_columns=3):
             Rows are scaled automatically . Defaults to 3.
     """
     plots_rows = int(np.ceil(len(filters)/plots_columns))
-    fig, axs = plt.subplots(plots_rows, plots_columns, tight_layout=True, figsize=(10,10),)
-    # fig.set_constrained_layout_pads(w_pad=0, h_pad=10, hspace=0, wspace=0)
-    for ax_idx, (r, c) in enumerate(np.indices((plots_columns, plots_rows)).reshape((2, plots_rows*plots_columns)).T):
+    fig, axs = plt.subplots(plots_rows, plots_columns, tight_layout=True, figsize=(10, 10))
+    indices = np.indices((plots_columns, plots_rows))
+    for ax_idx, (r, c) in enumerate(indices.reshape((2, plots_rows*plots_columns)).T):
         if ax_idx < len(filters):
-            axs[c,r].imshow(filters[ax_idx], cmap='gray')
-        axs[c,r].set_axis_off()
-    
+            axs[c, r].imshow(filters[ax_idx], cmap='gray')
+        axs[c, r].set_axis_off()
     plt.show()
 
 
 def plot_froc(
-    fpis: np.ndarray, tprs: np.ndarray, total_mC: int = None, label: str = '', new_figure: bool = True
+    fpis: np.ndarray, tprs: np.ndarray, total_mC: int = None,
+    label: str = '', new_figure: bool = True
 ):
     """Plot FROC curve
     Args:
@@ -214,3 +230,60 @@ def plot_bootstrap_froc(
     sns.despine()
     if new_figure:
         plt.show()
+
+
+def draw_our_haar_like_features(
+    image: np.ndarray, haar_feature: Feature, alpha: float = 0.5,
+    rot: bool = False
+):
+    """Draws the Rotated Haar Feature kernel over the image with the fading given by
+    alpha.
+    Args:
+        image (np.ndarray): image over which to draw the kernel
+        haar_feature (Feature): Rotated Haar Feature
+        alpha (float, optional): Fading factor with which to plot the kernel.
+            Defaults to 0.5.
+        rot (bool, optional): Whether the feature is a rotated one or not.
+            Defaults to False
+    Returns:
+        (np.ndarray): image + overlap
+    """
+    image = utils.min_max_norm(image, 255).astype('uint8')
+    result = np.zeros(image.shape).astype(int)
+    if len(image.shape) < 3:
+        image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+
+    xby4 = utils.blockwise_retrieval(haar_feature.coords_x, size=4)
+    yby4 = utils.blockwise_retrieval(haar_feature.coords_y, size=4)
+    cby4 = utils.blockwise_retrieval(haar_feature.coeffs, size=4)
+
+    for rect_pts_x, rect_pts_y, rect_coeff in zip(xby4, yby4, cby4):
+        if rot:
+            rect_pts_x = np.asarray(rect_pts_x) - np.asarray([1, 2, 0, 1])
+            rect_pts_x = np.append(rect_pts_x, [rect_pts_x[2], rect_pts_x[1]])
+
+            rect_pts_y = np.asarray(rect_pts_y) - np.asarray([0, 0, 0, 1])
+            rect_pts_y = np.append(rect_pts_y, [rect_pts_y[2] - 1, rect_pts_y[1] - 1])
+
+        rect_points = list(zip(rect_pts_x, rect_pts_y))
+        rect_points = np.asarray(rect_points, dtype='int32')
+
+        a = int(abs(rect_coeff[0]))
+
+        if rect_coeff[0] < 0:
+            temp = np.zeros(result.shape).astype('uint8')
+            ch = cv2.convexHull(rect_points)
+            bin_ = cv2.drawContours(temp, [ch], -1, 1, -1)
+            result -= (binary_fill_holes(bin_)*a).astype(int)
+        else:
+            temp = np.zeros(result.shape).astype('uint8')
+            ch = cv2.convexHull(rect_points)
+            bin_ = cv2.drawContours(temp, [ch], -1, 1, -1)
+            result += (binary_fill_holes(bin_)*a).astype(int)
+    mask = np.zeros(image.shape)
+    mask[:, :, 0] = np.zeros_like(result)
+    mask[:, :, 1] = np.where(result < 0, 255, 0)
+    mask[:, :, 0] = np.where(result > 0, 255, 0)
+    mask = mask.astype('uint8')
+    image = cv2.addWeighted(image, (1-alpha), mask, alpha, 0.0)
+    return image

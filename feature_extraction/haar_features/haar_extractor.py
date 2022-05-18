@@ -35,17 +35,25 @@ def possible_shapes(base_shape: Size, window_size: int = WINDOW_SIZE) -> tp.Iter
 def possible_locations_rot(
     base_shape: RotSize, window_size: int = WINDOW_SIZE
 ) -> tp.Iterable[Location]:
+    """Gets all the possible tl coordinates of the features in the window"""
     return (Location(left=x, top=y)
-            for x in possible_position(base_shape.z, window_size)
-            for y in possible_position(base_shape.z, window_size))
+            for x in range(0, window_size + 1)
+            for y in range(0, window_size + 1))
 
 
-def possible_shapes_rot(base_shape: Size, window_size: int = WINDOW_SIZE) -> tp.Iterable[RotSize]:
-    base_z = base_shape.height
+def possible_shapes_rot(window_size: int = WINDOW_SIZE) -> tp.Iterable[RotSize]:
+    """Gets all the possible combinations of shearing fitting inside the window"""
+    z = 14
     return (RotSize(dx=dx, dy=dy, z=z)
-            for z in range(base_z, window_size + 1, base_z)
-            for dx in range(1, z)
-            for dy in range(1, z))
+            for dx in range(1, z + 1)
+            for dy in range(1, z + 1))
+
+
+def all_possible_variations(feat: hm.Feature, window_size: int):
+    """Instantiates all the possible features fitting in the window size"""
+    return (feat(location.left, location.top, shape.dx, shape.dy, shape.z, window_size)
+            for shape in possible_shapes_rot(window_size)
+            for location in possible_locations_rot(shape, window_size))
 
 
 def feature_instantiator(
@@ -69,11 +77,6 @@ def feature_instantiator(
             )
     features_rot = []
     if mode != 'hor':
-        def base_iterator(feat: hm.FeatureRot):
-            return (feat(location.left, location.top, shape.dx, shape.dy, shape.z)
-                    for shape in possible_shapes_rot(Size(height=1, width=1), window_size)
-                    for location in possible_locations_rot(shape, window_size))
-
         if rotated_feature_types is None:
             rotated_feature_types = [
                 hm.Feature2hRot, hm.Feature2vRot, hm.Feature3hRot, hm.Feature3vRot,
@@ -81,8 +84,9 @@ def feature_instantiator(
             ]
         features_rot = []
         for feat in rotated_feature_types:
-            feature_rot = (map(lambda feat: feat if feat.plausible else None, base_iterator(feat)))
-            features_rot.extend([feat for feat in feature_rot if feat is not None])
+            # Keep only the plaussible features from all the candidate ones inside the window
+            features_rot.extend(
+                [feat for feat in all_possible_variations(feat, window_size) if feat.plausible])
 
     return features + features_rot
 
