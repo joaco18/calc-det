@@ -221,7 +221,7 @@ def plot_bootstrap_froc(
         plt.ylabel('TPR')
     plt.title('FROC curve')
     plt.plot(fpis, tprs, c=cmap(0))
-    plt.xlim(0, 50)
+    plt.xlim(-0.01, 50)
     plt.fill_between(fpis, min_tprs, max_tprs, alpha=0.3, color=cmap(0))
     plt.ylim((0, 1))
     plt.legend([f"{label} AUC: {auc(fpis/fpis.max(), tprs)}"])
