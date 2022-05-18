@@ -1,16 +1,14 @@
+import cv2
 import math
 
-import cv2
 import numpy as np
 import pandas as pd
 import multiprocessing as mp
 
-from scipy import spatial
 from tqdm import tqdm
 from functools import partial
 
-from metrics.metrics_utils import evaluate_pairs_iou_appox, evaluate_pairs_iou_exact
-import general_utils.utils as utils
+from metrics.metrics_utils import non_maximum_suppression_w_labels
 
 
 def circle_comparison(predicted_roi_circles, mask, return_counts=True):
@@ -106,85 +104,6 @@ def quick_circle_comparison(predicted_roi_circles, mask, return_counts=True):
         return TP, FP, FN
 
 
-def get_tp_fp_fn(
-    lesion_bboxes: np.ndarray, radiuses: np.ndarray, detections: np.ndarray,
-    max_dist: int, min_iou: float = None, exact: bool = False,
-    lesion_mask: np.ndarray = None
-):
-    """Gets the true positives, false positives, false negatives, values from
-        ground truth actually correctly predicted and the false positives matching
-        the distance condition but not the area one.
-
-    Args:
-        lesion_bboxes (np.ndarray): ground truth lesion bboxes array as
-            coming out from INBreastDataset item
-        radiuses (np.ndarray): ground truth lesion radiuses array as
-            coming out from INBreastDataset item
-        detections (np.ndarray): detections given by (x,y,sigma)
-        max_dist (int): max distance criterium between the centers of
-            candidate lesion and ground truth to be mapped
-        min_iou (float): minimun intersection over union criterion
-            between the centers of candidate lesion and ground truth
-        exact (bool): If True, the true shape of the lesion is used
-            else the circular approximation is used
-        lesion_mask (np.ndarray): if the exact method is used the lesion mask needs
-            to be used
-    Returns:
-        tp (np.ndarray): [(x,y,sigma)]
-        fp (np.ndarray): [(x,y,sigma)]
-        fn (np.ndarray): [(x,y,radius)]
-        gt_predicted (np.ndarray): ground truth lesion actually detected
-            [(x,y,radius)]
-        close_fp (np.ndarray): false positives that match distance criteria
-            but not iou (only if iou value is indicated)
-    """
-    if exact:
-        assert (lesion_mask is not None), 'Exact method requires the mask of lesions'
-
-    # Get ground truth approximate circles
-    radiuses = np.expand_dims(radiuses.astype(int), 1)
-    gt_centers = utils.get_center_bboxes(lesion_bboxes)
-    gt_circles = np.concatenate([gt_centers, radiuses], axis=1)
-
-    # Get the distance tree
-    datapoints = np.concatenate([gt_circles, detections])
-    tree = spatial.cKDTree(datapoints)
-
-    # Get the indexes among all points of ground truth points
-    gt_idxs = np.arange(len(gt_circles))
-
-    # Get the pairs closer than the required distance
-    pairs = tree.query_pairs(max_dist)
-    if len(pairs) == 0:
-        fn = gt_circles
-        fp = detections
-        return [], fp, fn, [], []
-
-    # Get the pairs matching the intersection over union condition
-    min_iou = 1 if min_iou is None else min_iou
-    if exact:
-        tp_idx, fp_idx, detected_gts = evaluate_pairs_iou_exact(
-            pairs, gt_idxs, datapoints, min_iou, lesion_mask, lesion_bboxes
-        )
-    else:
-        tp_idx, fp_idx, detected_gts = evaluate_pairs_iou_appox(
-            pairs, gt_idxs, datapoints, min_iou
-        )
-
-    # Get TP, FP, FN and missed sets of points
-    detected_gts = list(set(detected_gts))
-    missed_idx = [idx for idx in gt_idxs if idx not in detected_gts]
-    tp = datapoints[tp_idx, :]
-    close_fp = datapoints[fp_idx, :]
-    fn = datapoints[missed_idx, :]
-    gt_predicted = datapoints[list(detected_gts), :]
-    fp_idx = np.full(len(datapoints), True)
-    fp_idx[tp_idx] = False
-    fp_idx[gt_idxs] = False
-    fp = datapoints[fp_idx, :]
-    return tp, fp, fn, gt_predicted, close_fp
-
-
 def create_binary_mask_from_blobs(shape: tuple, blobs_x_y_sigma: list):
     img_binary_blobs = np.zeros(shape)
     for blob in blobs_x_y_sigma:
@@ -203,81 +122,10 @@ def fp_per_unit_area(image_shape, no_fp):
     return no_fp/(image_shape[0] * image_shape[1] * (0.070**2)/100)
 
 
-def get_froc_df_of_many_imgs_features(
-    candidates_df: pd.DataFrame, fns_df: pd.DataFrame, predictions: np.ndarray 
+def froc_curve(
+    froc_df: pd.DataFrame, thresholds: np.ndarray = None, cut_on_50fpi: bool = False,
+    non_max_supression: bool = True
 ):
-    """Get the standard froc dataframe out of the candidates dataframe of many images
-    and the dataframe of false negatives for those images.
-    Args:
-        candidates_df (pd.DataFrame): 
-            Rows: candidates (tp + fp)
-            Columns: ['candidate_coordinates', 'labels', 'img_id']
-        fns_df (pd.DataFrame): 
-            Rows: fn lesion
-            Columns: ['x', 'y', 'radius', 'labels', 'img_id']
-        predictions (np.ndarray): prediction scores for the candidates
-    Returns:
-        pd.DataFrame:
-            Rows: tp, fp, fn objects
-            Columns: [
-                x, y, radius, detection_labels, pred_scores,
-                image_ids, pred_binary, class_labels
-            ]
-    """
-    df = candidates_df.copy()
-    values = candidates_df.loc[:, 'candidate_coordinates'].values.copy()
-    df.loc[:, ['x', 'y', 'radius']] = np.vstack(values)
-    df.loc[df.labels, 'detection_labels'] = 'TP'
-    df.loc[~df.labels, 'detection_labels'] = 'FP'
-    df.loc[:, 'pred_scores'] = predictions
-
-    fns_df_temp = fns_df.copy()
-    fns_df_temp.loc[:, 'detection_labels'] = 'FN'
-    fns_df_temp.loc[:, 'pred_scores'] = 0.
-    columns = ['x', 'y', 'radius', 'detection_labels', 'pred_scores', 'img_id']
-
-    df = pd.concat([df[columns], fns_df_temp[columns]], ignore_index=True)
-    df.columns = ['x', 'y', 'radius', 'detection_labels', 'pred_scores', 'image_ids']
-    df.loc[:, 'pred_binary'] = False
-    df.loc[:, 'class_labels'] = False
-    return df
-
-
-def get_froc_df_of_img(
-    tp: list, fp: list, fn: list, predictions: np.ndarray, image_id: int
-):
-    """Get the basic dataframe used for froc calculation from the detections
-    of an image.
-    Args:
-        tp (list): True positive candidates [[x, y, radius]]
-        fp (list): False positive candidates [[x, y, radius]]
-        fn (list): False Negative lesions [[x, y, radius]]
-        predictions (np.ndarray): scores outputed by the model for the candidate
-            (tp+fp) detections
-        image_id (int): id of the image considered
-
-    Returns:
-        pd.DataFrame:
-            Rows: tp, fp, fn objects
-            Columns: [
-                x, y, radius, detection_labels, pred_scores,
-                image_ids, pred_binary, class_labels
-            ]
-    """
-    objects = tp + fp + fn
-    objects = np.asarray(objects)
-    df = pd.DataFrame(objects, columns=['x', 'y', 'radius'])
-    df['detection_labels'] = ['TP']*len(tp) + ['FP']*len(fp) + ['FN']*len(fn)
-    df['pred_scores'] = 0.
-    df.loc[(df.detection_labels == 'TP') | (df.detection_labels == 'FP'), 'pred_scores'] = \
-        predictions
-    df['image_ids'] = image_id
-    df['pred_binary'] = False
-    df['class_labels'] = False
-    return df
-
-
-def froc_curve(froc_df: pd.DataFrame, thresholds: np.ndarray = None, cut_on_50fpi: bool = False):
     """Using the complete dataset for froc computation containing all the images, obtains the
     Sensitivity and the Average False positives per image at each threshold.
     If thresholds is given then those thresholds are checked if not all posible ones.
@@ -288,12 +136,17 @@ def froc_curve(froc_df: pd.DataFrame, thresholds: np.ndarray = None, cut_on_50fp
         thresholds (np.ndarray, optional): Array of thresholds to check. Defaults to None.
         cut_on_50fpi (bool, optional): Whether to stop computation at 50 ftpi or not.
             Defaults to False.
+        non_max_supression (bool): Whether to perfom NMS over the labels (piking just the
+            candidate with larger prediciton for each labeled mc). Defaults to True
     Returns:
         sensitivities (np.ndarray): sensitivities at each threshold
         avgs_fp_per_image (np.ndarray): average number of fp per image at each threshold
         thresholds (np.ndarray): thresholds
     """
-    total_n_images = len(froc_df.image_ids.unique())
+    if non_max_supression:
+        froc_df = non_maximum_suppression_w_labels(froc_df)
+
+    total_n_images = len(froc_df.img_id.unique())
     sensitivities = []
     avgs_fp_per_image = []
     if thresholds is None:
@@ -329,7 +182,8 @@ def froc_curve(froc_df: pd.DataFrame, thresholds: np.ndarray = None, cut_on_50fp
 
 
 def froc_curve_bootstrap(
-    original_froc_df: pd.DataFrame, n_sets: int = 1000, n_jobs: int = -1
+    original_froc_df: pd.DataFrame, n_sets: int = 1000, n_jobs: int = -1,
+    non_max_supression: bool = True
 ):
     """Using the complete dataset for froc computation containing all the images,
     generates 'n_sets' bootstrap samples. For each of them compute the froc curve.
@@ -339,6 +193,8 @@ def froc_curve_bootstrap(
         n_sets (int, optional): Number of bootstrap samples to take. Defaults to 1000.
         n_jobs (int, optional): Number of processes to use. If -1 all available
             cores will be used. Defaults to -1.
+        non_max_supression (bool): Whether to perfom NMS over the labels (piking just the
+            candidate with larger prediciton for each labeled mc). Defaults to True
     Returns:
         avg_sensitivities (np.ndarray): Average (over btrsp sets) sensitivity at each threshold
         std_sensitivities (np.ndarray): Standat deviation (over btrsp sets) of sensitivity
@@ -349,6 +205,8 @@ def froc_curve_bootstrap(
             per image at each threshold.
         thresholds (np.ndarray): Thresholds
     """
+    if non_max_supression:
+        original_froc_df = non_maximum_suppression_w_labels(original_froc_df)
 
     if n_jobs == -1:
         n_jobs = mp.cpu_count()
@@ -361,7 +219,7 @@ def froc_curve_bootstrap(
         btstrp_froc_df.append(original_froc_df.sample(n=n_samples, replace=True, random_state=i))
 
     # compute individual FROCS
-    partial_func_froc_curve = partial(froc_curve, thresholds=thresholds)
+    partial_func_froc_curve = partial(froc_curve, thresholds=thresholds, non_max_supression=False)
     res = []
     with mp.Pool(n_jobs) as pool:
         for result in tqdm(pool.imap(partial_func_froc_curve, btstrp_froc_df), total=n_sets):
