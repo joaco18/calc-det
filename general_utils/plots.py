@@ -204,10 +204,11 @@ def plot_bootstrap_froc(
     """
     # limit point calculation till fpis<=50
     if cut_on_50fpi:
-        area_lim_mask = np.array(fpis)<=50
+        area_lim_mask = np.array(fpis) <= 50
         fpis = np.array(fpis)[area_lim_mask]
         tprs = np.array(tprs)[area_lim_mask]
-
+        std_tprs = np.array(std_tprs)[area_lim_mask]
+    
     max_tprs = tprs + std_tprs
     min_tprs = tprs - std_tprs
 
