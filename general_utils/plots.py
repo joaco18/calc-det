@@ -153,6 +153,11 @@ def plot_froc(
         new_figure (bool, optional): Whether to generate a new figure or not, allows overlapping.
             Defaults to True.
     """
+    # limit point calculation till fpis<=50
+    area_lim_mask = np.array(fpis)<=50
+    fpis = np.array(fpis)[area_lim_mask]
+    tprs = np.array(tprs)[area_lim_mask]
+    
     if new_figure:
         plt.figure(figsize=(8, 8))
     plt.xlabel('FPpI')
@@ -162,8 +167,9 @@ def plot_froc(
         plt.ylabel('TPR')
     plt.title('FROC curve')
     plt.plot(fpis, tprs, c=cmap(0))
+    plt.xlim(0, 50)
     plt.ylim((0, 1))
-    plt.legend([f"{label} AUC: {auc(fpis, tprs)}"])
+    plt.legend([f"{label} AUC: {auc(fpis/fpis.max(), tprs)}"])
     sns.despine()
     if new_figure:
         plt.show()
@@ -184,6 +190,11 @@ def plot_bootstrap_froc(
         new_figure (bool, optional): Whether to generate a new figure or not, allows overlapping.
             Defaults to True.
     """
+    # limit point calculation till fpis<=50
+    area_lim_mask = np.array(fpis)<=50
+    fpis = np.array(fpis)[area_lim_mask]
+    tprs = np.array(tprs)[area_lim_mask]
+    
     max_tprs = tprs + std_tprs
     min_tprs = tprs - std_tprs
 
@@ -196,9 +207,10 @@ def plot_bootstrap_froc(
         plt.ylabel('TPR')
     plt.title('FROC curve')
     plt.plot(fpis, tprs, c=cmap(0))
+    plt.xlim(0, 50)
     plt.fill_between(fpis, min_tprs, max_tprs, alpha=0.3, color=cmap(0))
     plt.ylim((0, 1))
-    plt.legend([f"{label} AUC: {auc(fpis, tprs)}"])
+    plt.legend([f"{label} AUC: {auc(fpis/fpis.max(), tprs)}"])
     sns.despine()
     if new_figure:
         plt.show()
