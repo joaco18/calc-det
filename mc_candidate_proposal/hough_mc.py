@@ -90,7 +90,7 @@ class HoughCalcificationDetection:
             assert muscle_mask is not None, \
                 'If filtering of muscle region is required the muscle region mask should'\
                 ' be provided'
-        
+
         # 1.-4. Image Enhancement
         processed_image = self.load_preprocessed_image(image, image_id,
                                                        load_processed_images)
@@ -101,6 +101,7 @@ class HoughCalcificationDetection:
             # 6. Local Hough
             h2_circles = self.hough2(processed_image, h1_circles)
 
+            # TODO: Here there's a problem
             # handling duplicate candidates due to overlapping windows around hough1 candidates
             h2_circles = np.unique(h2_circles, axis=0)
         else:
@@ -195,7 +196,8 @@ class HoughCalcificationDetection:
 
         cx, cy, cr = circle
         # get coordinates of 200*200 cropped patch aroung circle
-        x1, x2, y1, y2 = patch_coordinates_from_center((cx, cy), self.processed_image.shape, patch_size=patch_size*2, use_padding=False)
+        x1, x2, y1, y2 = patch_coordinates_from_center(
+            (cx, cy), self.processed_image.shape, patch_size=patch_size*2, use_padding=False)
 
         h2_normalized_patch = self.processed_image[y1:y2, x1:x2].copy()
 
