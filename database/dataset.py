@@ -309,15 +309,15 @@ class INBreast_Dataset(Dataset):
         self.rois_df = self.rois_df.loc[self.rois_df.lesion_type.isin(self.lesion_types), :]
         self.rois_df.reset_index(inplace=True, drop=True)
         # filter imgs df
-        if 'normal' in self.lesion_types:
-            images_selection = (
-                self.img_df.img_id.isin(self.rois_df.img_id.unique()) |
-                (self.img_df.img_label == 'normal')
-            )
-        else:
-            images_selection = self.img_df.img_id.isin(self.rois_df.img_id.unique())
-        self.img_df = self.img_df.loc[images_selection, :]
-        self.img_df.reset_index(inplace=True, drop=True)
+        # if 'normal' in self.lesion_types:
+        #     images_selection = (
+        #         self.img_df.img_id.isin(self.rois_df.img_id.unique()) |
+        #         (self.img_df.img_label == 'normal')
+        #     )
+        # else:
+        #     images_selection = self.img_df.img_id.isin(self.rois_df.img_id.unique())
+        # self.img_df = self.img_df.loc[images_selection, :]
+        # self.img_df.reset_index(inplace=True, drop=True)
 
     def add_image_label_to_image_df(self):
         """
