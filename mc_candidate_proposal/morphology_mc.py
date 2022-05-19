@@ -92,7 +92,7 @@ class MorphologyCalcificationDetection:
         if self.filter_muscle_region:
             candidate_blobs = filter_dets_from_muscle_region(
                 candidate_blobs.astype(int), muscle_mask)
-
+        
         return candidate_blobs
 
     def reconstruction_by_dialation(

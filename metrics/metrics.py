@@ -124,8 +124,7 @@ def fp_per_unit_area(image_shape, no_fp):
 
 def froc_curve(
     froc_df: pd.DataFrame, thresholds: np.ndarray = None, cut_on_50fpi: bool = False,
-    non_max_supression: bool = True
-):
+    non_max_supression: bool = True):
     """Using the complete dataset for froc computation containing all the images, obtains the
     Sensitivity and the Average False positives per image at each threshold.
     If thresholds is given then those thresholds are checked if not all posible ones.
