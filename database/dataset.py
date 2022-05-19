@@ -7,6 +7,7 @@ import cv2
 import logging
 import pprint
 import random
+import shutil
 import general_utils.utils as utils
 
 from functools import partial
@@ -69,6 +70,7 @@ class INBreast_Dataset(Dataset):
         dfpath: Path = datapath,
         views: List[str] = ["*"],
         lesion_types: List[str] = ['calcification', 'cluster'],
+        keep_just_images_of_lesion_type: List[str] = False,
         transform: List[str] = None,
         data_aug: List[str] = None,
         nrows: int = None,
@@ -80,7 +82,7 @@ class INBreast_Dataset(Dataset):
         extract_patches: bool = True,
         extract_patches_method: str = 'all',  # 'centered'
         patch_size: int = 12,
-        stride: Tuple[int] = (1, 1),
+        stride: Tuple[int] = 1,
         min_breast_fraction_roi: float = 0.,
         normalize: str = None,
         n_jobs: int = -1,
@@ -101,6 +103,10 @@ class INBreast_Dataset(Dataset):
             lesion_types (List[str], optional): List of lesion types, subset of
                 ['asymmetry', 'calcification', 'cluster', 'distortion', 'mass', 'normal'].
                 If None, no filtering is applied
+            keep_just_images_of_lesion_type (bool, optoinal): If True, only the images with
+                lesions included in lesion types will be retained. Defaults to False, which
+                means all images are retained and then just the rois of 'lesion_types' are
+                retained.
             transform (List[str], optional): List of transformations. Defaults to None.
             data_aug (List[str], optional): List of data augmentation procedures.
                 Defaults to None.
@@ -111,7 +117,7 @@ class INBreast_Dataset(Dataset):
                 example or not. Defaults to False.
             level (str, optional): Whether to generate a dataset at 'rois' or 'image' level.
                 Defaults to 'image'.
-            partitions (List[str]): Select predefined sets, subset from 
+            partitions (List[str]): Select predefined sets, subset from
                 ['train', 'validation', 'test']. Defaults to ['train', 'validation', 'test']
             max_lesion_diam_mm (float): Maximum horizontal or vertical diameter allowed for the
                 lesion. If None, no filtring is applied
@@ -120,7 +126,7 @@ class INBreast_Dataset(Dataset):
                 One of ['all', 'centered']. Defaults to 'all'.
             patch_size (int): size of the roi in pixels. Only used if rois are extracted.
             stride (Tuple[int], optional): If rois are extracted with 'all' method, define the
-                stride to use. Defaults to (1, 1).
+                stride to use. Defaults to 1.
             min_breast_fraction_roi (float, optional): Minimum percentage of breast to consider
                 the roi as a valid example. If muscle masks are used, this same criteria will
                 apply to the region of muscle. Defaults to 0.
@@ -160,6 +166,7 @@ class INBreast_Dataset(Dataset):
         self.lesions_mask = return_lesions_mask
         self.normalize = normalize
         self.lesion_types = lesion_types
+        self.keep_just_images_of_lesion_type = keep_just_images_of_lesion_type
         self.max_lesion_diam_px = \
             int(max_lesion_diam_mm / 0.07) if (max_lesion_diam_mm is not None) else None
         self.cropped_imgs = cropped_imgs
@@ -187,6 +194,13 @@ class INBreast_Dataset(Dataset):
         # Get rois df
         if level == 'rois':
             if extract_patches:
+                if self.patch_img_path.exists():
+                    shutil.rmtree(self.patch_img_path)
+                    self.patch_img_path.mkdir(exist_ok=True, parents=True)
+                if self.patch_mask_path.exists():
+                    shutil.rmtree(self.patch_mask_path)
+                    self.patch_mask_path.mkdir(exist_ok=True, parents=True)
+
                 self.patch_size = patch_size
                 self.min_breast_frac = min_breast_fraction_roi
                 self.stride = stride
@@ -194,9 +208,15 @@ class INBreast_Dataset(Dataset):
                     self.patches_df = self.all_patches_extraction()
                     self.patches_df.to_csv(str(dfpath/'complete_rois_metadata.csv'))
                 else:
-                    assert self.patch_size >= self.max_lesion_diam_px, \
-                        'The largest lesion selected doesn\' fit inside the patch ' \
-                        'size selected.\n Please modify it or use \'all\' extraction method.'
+                    if self.max_lesion_diam_px is not None:
+                        assert self.patch_size >= self.max_lesion_diam_px, \
+                            'The largest lesion selected doesn\' fit inside the patch ' \
+                            'size selected.\n Please modify it or use \'all\' extraction method.'
+                    max_size_in_db = int(np.ceil(self.rois_df.radius.max()))
+                    assert self.patch_size >= max_size_in_db, \
+                        f'The largest lesion present in the dataset ({max_size_in_db}) doesn\'t' \
+                        f' fit inside the patch size selected.\n Please modify it or use' \
+                        f' \'all\' extraction method.'
 
                     self.patches_df = self.centered_patches_extraction()
                     self.patches_df.to_csv(str(dfpath/'complete_rois_metadata.csv'))
@@ -295,15 +315,16 @@ class INBreast_Dataset(Dataset):
         self.rois_df = self.rois_df.loc[self.rois_df.lesion_type.isin(self.lesion_types), :]
         self.rois_df.reset_index(inplace=True, drop=True)
         # filter imgs df
-        if 'normal' in self.lesion_types:
-            images_selection = (
-                self.img_df.img_id.isin(self.rois_df.img_id.unique()) |
-                (self.img_df.img_label == 'normal')
-            )
-        else:
-            images_selection = self.img_df.img_id.isin(self.rois_df.img_id.unique())
-        self.img_df = self.img_df.loc[images_selection, :]
-        self.img_df.reset_index(inplace=True, drop=True)
+        if self.keep_just_images_of_lesion_type:
+            if 'normal' in self.lesion_types:
+                images_selection = (
+                    self.img_df.img_id.isin(self.rois_df.img_id.unique()) |
+                    (self.img_df.img_label == 'normal')
+                )
+            else:
+                images_selection = self.img_df.img_id.isin(self.rois_df.img_id.unique())
+            self.img_df = self.img_df.loc[images_selection, :]
+            self.img_df.reset_index(inplace=True, drop=True)
 
     def add_image_label_to_image_df(self):
         """
@@ -320,6 +341,7 @@ class INBreast_Dataset(Dataset):
         The processing is done in parallel to make it faster.
         """
         n_rows = self.img_df.shape[0]
+        logging.info('Start extracting patches')
         res = []
         # for i in tqdm(range(n_rows), total=n_rows):            # Kept for easy debbuging
         #     res.append(self.extract_patches_from_image(i))
@@ -405,6 +427,7 @@ class INBreast_Dataset(Dataset):
         # Get the percentage of breast in the roi. If the muscle mask is used this cosideres
         # brest the non-muscle region inside the breast
         if self.use_muscle_mask:
+            muscle_mask = padd_image(muscle_mask, self.patch_size)
             breast_patches = slice_image(
                 np.where(muscle_mask == 0, image, 0),
                 window_size=self.patch_size, stride=self.stride)
@@ -423,9 +446,6 @@ class INBreast_Dataset(Dataset):
         mask_patches = mask_patches[keep_idx, :, :]
         patches_descr.reset_index(inplace=True, drop=True)
 
-        # Generate a binary mask
-        mask_patches = np.where(mask_patches != 0, 255, 0)
-
         # calculating patches coordinates
         bbox_coordinates = []
         row_num, col_num, _, __ = view_as_windows(image, self.patch_size, self.stride).shape
@@ -442,6 +462,8 @@ class INBreast_Dataset(Dataset):
         for roi_idx in range(image_patches.shape[0]):
             # You won't have empty images in this case due to the min_breast constrain
             if mask_patches[roi_idx, :, :].any() and not save_lesions:
+                # This condition is for the usage of this method in the
+                # centered_patch_cropping were not normal cases need not to be saved
                 patch_filenames.append('roi_not_saved')
                 patch_mask_filenames.append('empty_mask')
                 continue
@@ -458,7 +480,7 @@ class INBreast_Dataset(Dataset):
                 roi_mask_name = f'{img_id}_roi_{roi_idx}_mask.png'
                 patch_mask_filenames.append(f'{img_id}/{roi_mask_name}')
                 (self.patch_mask_path/str(img_id)).mkdir(parents=True, exist_ok=True)
-                cv2.imwrite(str(self.patch_mask_path/roi_mask_name), mask_patches[roi_idx, :, :])
+                cv2.imwrite(str(self.patch_mask_path/str(img_id)/roi_mask_name), mask_patches[roi_idx, :, :])
             else:
                 patch_mask_filenames.append('empty_mask')
 
@@ -485,6 +507,7 @@ class INBreast_Dataset(Dataset):
         # Get lesion patches
         n_rows = self.img_df.shape[0]
         res = []
+        logging.info('Extracting centered lesion patches...\n')
         # for i in tqdm(range(n_rows), total=n_rows):            # Kept for easy debbuging
         #     res.append(self.extract_centered_patches_from_image(i))
         with mp.Pool(self.n_jobs) as pool:
@@ -496,6 +519,7 @@ class INBreast_Dataset(Dataset):
         patches_df = pd.concat(res, ignore_index=True)
 
         # Get normal patches
+        logging.info('Extracting normal patches...\n')
         res = []
         # for i in tqdm(range(n_rows), total=n_rows):            # Kept for easy debbuging
         #     res.append(self.extract_patches_from_image(i, save_lesions=False))
@@ -566,25 +590,22 @@ class INBreast_Dataset(Dataset):
         for index in indexes_to_filter:
             mask = np.where(mask == index, 0, mask)
 
-        # Generate a binary mask
-        mask = np.where(mask != 0, 255, 0)
-
         # Accumulator for the output df
         patches_descr = []
 
         for k, (index, roi) in enumerate(rois_subset_df.iterrows()):
             patches_descr_row = []
-            if self.cropped_imgs:
-                roi_center = utils.load_point(roi['center_crop'], 'int')
+            center_column_name = 'center_crop' if self.cropped_imgs else 'center'
+            center = roi[center_column_name]
+            if isinstance(center, str):
+                roi_center = utils.load_point(center, 'int')
             else:
-                roi_center = utils.load_point(roi['center'], 'int')
+                roi_center = center
 
             # Get the coordinates of the patch centered in the lesion
             patch_x1, patch_x2, patch_y1, patch_y2, image, mask = \
                 utils.patch_coordinates_from_center_w_padding(
-                    roi_center, image_size, self.patch_size,
-                    use_padding=True, image=image, mask=mask
-                )
+                    roi_center, image_size, self.patch_size, image=image, mask=mask)
 
             # Crop the patch
             image_patch = image[patch_y1:patch_y2, patch_x1:patch_x2]
@@ -592,6 +613,11 @@ class INBreast_Dataset(Dataset):
             if self.use_muscle_mask:
                 muscle_mask_patch = muscle_mask[patch_y1:patch_y2, patch_x1:patch_x2]
                 muscle_mask_patch = np.where(muscle_mask_patch > 0, 0, 1)
+                if muscle_mask.shape != image_patch.shape:
+                    temp = muscle_mask_patch.copy()
+                    muscle_mask_patch = np.zeros_like(image_patch)
+                    muscle_mask_patch[0:temp.shape[0], 0:temp.shape[1]] = temp
+                    del temp
                 breast_fraction = (
                     (((image_patch * muscle_mask_patch) != 0).sum()) /
                     (image_patch.shape[0] * image_patch.shape[1]))
@@ -603,8 +629,7 @@ class INBreast_Dataset(Dataset):
 
             # Save patches and masks
             if self.normalize == 'min_max':
-                image_patch = utils.min_max_norm(image_patch, 255)
-            image_patch = image_patch.astype('uint8')
+                image_patch = utils.min_max_norm(image_patch, 255).astype('uint8')
             patch_filename = f'{img_id}_les_patch_{k}.png'
             (self.patch_img_path/str(img_id)).mkdir(parents=True, exist_ok=True)
             cv2.imwrite(str(self.patch_img_path/str(img_id)/patch_filename), image_patch)
@@ -672,7 +697,6 @@ class INBreast_Dataset(Dataset):
             sample['radiuses'] = self.rois_df.loc[rois_from_img, 'radius'].values
         else:
             sample["patch_bbox"] = [self.df['patch_bbox'].iloc[idx]]
-            sample["radius"] = [self.df['radius'].iloc[idx]]
 
         # Load lesion mask
         if self.lesions_mask:
@@ -691,8 +715,10 @@ class INBreast_Dataset(Dataset):
                 if mask_filename != 'empty_mask':
                     mask_filename = self.patch_mask_path / mask_filename
                     mask = cv2.imread(str(mask_filename), cv2.IMREAD_ANYDEPTH)
+                    sample["lesion_bboxes"] = utils.get_bbox_of_lesions_in_patch(mask)
                 else:
                     mask = np.zeros(img.shape)
+                    sample["lesion_bboxes"] = []
 
             # Consider the cases with lesions inside lesions
             holes = mask.astype('float32').copy()
