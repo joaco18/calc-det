@@ -243,3 +243,16 @@ def get_an_example_array(image: np.ndarray, patch_size: int, candidates: np.ndar
 def blockwise_retrieval(t, size=2, fillvalue=None):
     it = iter(t)
     return zip_longest(*[it]*size, fillvalue=fillvalue)
+
+
+def get_bbox_of_lesions_in_patch(mask):
+    rois_idxs = np.unique(mask)
+    lesion_bboxes = []
+    for idx in rois_idxs:
+        if idx == 0:
+            continue
+        [y, x] = np.where(mask == idx)
+        tl = (x.min(), y.min())
+        br = (x.max(), y.max())
+        lesion_bboxes.append((tl, br))
+    return lesion_bboxes

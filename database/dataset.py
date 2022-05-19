@@ -80,7 +80,7 @@ class INBreast_Dataset(Dataset):
         extract_patches: bool = True,
         extract_patches_method: str = 'all',  # 'centered'
         patch_size: int = 12,
-        stride: Tuple[int] = (1, 1),
+        stride: Tuple[int] = 1,
         min_breast_fraction_roi: float = 0.,
         normalize: str = None,
         n_jobs: int = -1,
@@ -120,7 +120,7 @@ class INBreast_Dataset(Dataset):
                 One of ['all', 'centered']. Defaults to 'all'.
             patch_size (int): size of the roi in pixels. Only used if rois are extracted.
             stride (Tuple[int], optional): If rois are extracted with 'all' method, define the
-                stride to use. Defaults to (1, 1).
+                stride to use. Defaults to 1.
             min_breast_fraction_roi (float, optional): Minimum percentage of breast to consider
                 the roi as a valid example. If muscle masks are used, this same criteria will
                 apply to the region of muscle. Defaults to 0.
@@ -423,9 +423,6 @@ class INBreast_Dataset(Dataset):
         mask_patches = mask_patches[keep_idx, :, :]
         patches_descr.reset_index(inplace=True, drop=True)
 
-        # Generate a binary mask
-        mask_patches = np.where(mask_patches != 0, 255, 0)
-
         # calculating patches coordinates
         bbox_coordinates = []
         row_num, col_num, _, __ = view_as_windows(image, self.patch_size, self.stride).shape
@@ -441,7 +438,7 @@ class INBreast_Dataset(Dataset):
         patch_filenames, patch_mask_filenames = [], []
         for roi_idx in range(image_patches.shape[0]):
             # You won't have empty images in this case due to the min_breast constrain
-            if mask_patches[roi_idx, :, :].any() and not save_lesions:
+            if not save_lesions:
                 patch_filenames.append('roi_not_saved')
                 patch_mask_filenames.append('empty_mask')
                 continue
@@ -458,7 +455,7 @@ class INBreast_Dataset(Dataset):
                 roi_mask_name = f'{img_id}_roi_{roi_idx}_mask.png'
                 patch_mask_filenames.append(f'{img_id}/{roi_mask_name}')
                 (self.patch_mask_path/str(img_id)).mkdir(parents=True, exist_ok=True)
-                cv2.imwrite(str(self.patch_mask_path/roi_mask_name), mask_patches[roi_idx, :, :])
+                cv2.imwrite(str(self.patch_mask_path/str(img_id)/roi_mask_name), mask_patches[roi_idx, :, :])
             else:
                 patch_mask_filenames.append('empty_mask')
 
@@ -672,7 +669,6 @@ class INBreast_Dataset(Dataset):
             sample['radiuses'] = self.rois_df.loc[rois_from_img, 'radius'].values
         else:
             sample["patch_bbox"] = [self.df['patch_bbox'].iloc[idx]]
-            sample["radius"] = [self.df['radius'].iloc[idx]]
 
         # Load lesion mask
         if self.lesions_mask:
@@ -691,8 +687,10 @@ class INBreast_Dataset(Dataset):
                 if mask_filename != 'empty_mask':
                     mask_filename = self.patch_mask_path / mask_filename
                     mask = cv2.imread(str(mask_filename), cv2.IMREAD_ANYDEPTH)
+                    sample["lesion_bboxes"] = utils.get_bbox_of_lesions_in_patch(mask)
                 else:
                     mask = np.zeros(img.shape)
+                    sample["lesion_bboxes"] = []
 
             # Consider the cases with lesions inside lesions
             holes = mask.astype('float32').copy()
