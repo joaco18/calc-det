@@ -7,6 +7,7 @@ import cv2
 import logging
 import pprint
 import random
+import shutil
 import general_utils.utils as utils
 
 from functools import partial
@@ -187,6 +188,13 @@ class INBreast_Dataset(Dataset):
         # Get rois df
         if level == 'rois':
             if extract_patches:
+                if self.patch_img_path.exists():
+                    shutil.rmtree(self.patch_img_path)
+                    self.patch_img_path.mkdir(exist_ok=True, parents=True)
+                if self.patch_mask_path.exists():
+                    shutil.rmtree(self.patch_mask_path)
+                    self.patch_mask_path.mkdir(exist_ok=True, parents=True)
+
                 self.patch_size = patch_size
                 self.min_breast_frac = min_breast_fraction_roi
                 self.stride = stride
