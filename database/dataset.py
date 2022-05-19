@@ -173,7 +173,7 @@ class INBreast_Dataset(Dataset):
         self.generate_validation_partition()
 
         # Filter dataset based on different criteria
-        # self.filter_excluded_cases()
+        self.filter_excluded_cases()
         self.filter_stored_rois()
         self.filter_by_partition()
         if self.max_lesion_diam_px is not None:
