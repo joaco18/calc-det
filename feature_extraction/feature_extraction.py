@@ -417,8 +417,9 @@ class CandidatesFeatureExtraction_MP(CandidatesFeatureExtraction):
     
     Works around 4x faster than the one above.
     """
-    def __init__(self, patch_size: int, fos=True, gabor_params=None, wavelet_params=None, haar_params=None):
+    def __init__(self, patch_size: int, fos=True, gabor_params=None, wavelet_params=None, haar_params=None, n_jobs=8):
         super().__init__(patch_size, fos, gabor_params, wavelet_params, haar_params)
+        self.n_jobs = n_jobs
     
     def slice_image_in_patches(self, image, gabored_images, candidates):
         image_patches = []
