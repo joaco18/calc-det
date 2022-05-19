@@ -70,6 +70,7 @@ class INBreast_Dataset(Dataset):
         dfpath: Path = datapath,
         views: List[str] = ["*"],
         lesion_types: List[str] = ['calcification', 'cluster'],
+        keep_just_images_of_lesion_type: List[str] = False,
         transform: List[str] = None,
         data_aug: List[str] = None,
         nrows: int = None,
@@ -102,6 +103,10 @@ class INBreast_Dataset(Dataset):
             lesion_types (List[str], optional): List of lesion types, subset of
                 ['asymmetry', 'calcification', 'cluster', 'distortion', 'mass', 'normal'].
                 If None, no filtering is applied
+            keep_just_images_of_lesion_type (bool, optoinal): If True, only the images with
+                lesions included in lesion types will be retained. Defaults to False, which
+                means all images are retained and then just the rois of 'lesion_types' are
+                retained.
             transform (List[str], optional): List of transformations. Defaults to None.
             data_aug (List[str], optional): List of data augmentation procedures.
                 Defaults to None.
@@ -161,6 +166,7 @@ class INBreast_Dataset(Dataset):
         self.lesions_mask = return_lesions_mask
         self.normalize = normalize
         self.lesion_types = lesion_types
+        self.keep_just_images_of_lesion_type = keep_just_images_of_lesion_type
         self.max_lesion_diam_px = \
             int(max_lesion_diam_mm / 0.07) if (max_lesion_diam_mm is not None) else None
         self.cropped_imgs = cropped_imgs
@@ -309,15 +315,16 @@ class INBreast_Dataset(Dataset):
         self.rois_df = self.rois_df.loc[self.rois_df.lesion_type.isin(self.lesion_types), :]
         self.rois_df.reset_index(inplace=True, drop=True)
         # filter imgs df
-        # if 'normal' in self.lesion_types:
-        #     images_selection = (
-        #         self.img_df.img_id.isin(self.rois_df.img_id.unique()) |
-        #         (self.img_df.img_label == 'normal')
-        #     )
-        # else:
-        #     images_selection = self.img_df.img_id.isin(self.rois_df.img_id.unique())
-        # self.img_df = self.img_df.loc[images_selection, :]
-        # self.img_df.reset_index(inplace=True, drop=True)
+        if self.keep_just_images_of_lesion_type:
+            if 'normal' in self.lesion_types:
+                images_selection = (
+                    self.img_df.img_id.isin(self.rois_df.img_id.unique()) |
+                    (self.img_df.img_label == 'normal')
+                )
+            else:
+                images_selection = self.img_df.img_id.isin(self.rois_df.img_id.unique())
+            self.img_df = self.img_df.loc[images_selection, :]
+            self.img_df.reset_index(inplace=True, drop=True)
 
     def add_image_label_to_image_df(self):
         """
