@@ -427,7 +427,9 @@ def main():
     ])
 
     # Load the predefined training set
-    train_set_images = pd.read_pickle('data/train_set_ids.pkl')
+    train_set_images = pd.read_csv('data/standard_partitions.csv')
+    train_set_images = train_set_images.loc[
+        train_set_images.partition == 'train', 'image_id'].astype(str).tolist()
 
     # Read each dicom and parse the respective xml file
     for filename in tqdm(dcm_folder.iterdir(), total=len(os.listdir(dcm_folder))):

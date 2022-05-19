@@ -373,7 +373,8 @@ def get_tp_fp_fn_center_patch_criteria(
     Args:
         candidates (np.ndarray): [x, y, radius]
         roi_mask (np.ndarray): mask of lesion labels (each one identified independently)
-        center_region_size (int): region in the center of the patch to consider for labeling
+        center_region_size (int): region in the center of the patch to consider for labeling.
+            If set to None the hole patch is considered for the intersection.
         patch_size (int): size of the patch to evaluate
     Returns:
         tp (pd.DataFrame): Columns: ['x', 'y', 'radius', 'label', 'matching_gt','repeted_idxs']
