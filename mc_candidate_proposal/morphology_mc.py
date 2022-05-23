@@ -44,13 +44,15 @@ class MorphologyCalcificationDetection:
         self.dilation_k_size = 14
         self.filter_muscle_region = filter_muscle_region
 
-    def detect(self, image: np.ndarray, image_id: int, muscle_mask: np.ndarray = None):
+    def detect(self, image: np.ndarray, image_id: int, muscle_mask: np.ndarray = None, max_radius = 10):
         """Detects mC for a given image
         Args:
             image (np.ndarray): image to process
             image_id (int): id
             muscle_mask (np.ndarray, optional): pectoral muscle mask. Only necessary
                 if the filtering is indicated in constructor. Defaults to None
+            max_radius (int): maximum radius allowed in candidates.
+                                Defaults to 10 (in accordance to filter convention)
         Returns:
             candidate_blobs (np.ndarray): [x, y, radius]
         """
@@ -92,7 +94,10 @@ class MorphologyCalcificationDetection:
         if self.filter_muscle_region:
             candidate_blobs = filter_dets_from_muscle_region(
                 candidate_blobs.astype(int), muscle_mask)
-
+        
+        # filter by max_radius
+        candidate_blobs = candidate_blobs[candidate_blobs[:, 2] <= max_radius]
+                
         return candidate_blobs
 
     def reconstruction_by_dialation(
