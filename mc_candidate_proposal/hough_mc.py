@@ -11,11 +11,11 @@ from mc_candidate_proposal.candidate_utils import filter_dets_from_muscle_region
 
 DEHAZING_PARAMS = {'omega': 0.9, 'window_size': 11, 'radius': 40, 'eps': 1e-5}
 
-HOUGH1_PARAMS = {'method': cv2.HOUGH_GRADIENT, 'dp': 1, 'minDist': 20,
-                 'param1': 300, 'param2': 8,  'minRadius': 2, 'maxRadius': 20}
+HOUGH1_PARAMS = {'method': cv2.HOUGH_GRADIENT, 'dp': 1, 'minDist': 10,
+                 'param1': 300, 'param2': 5,  'minRadius': 2, 'maxRadius': 10}
 
 HOUGH2_PARAMS = {'method': cv2.HOUGH_GRADIENT, 'dp': 1, 'minDist': 20,
-                 'param1': 300, 'param2': 10,  'minRadius': 2, 'maxRadius': 20}
+                 'param1': 300, 'param2': 3,  'minRadius': 2, 'maxRadius': 10}
 
 BACK_EXT_RADIOUS = 50
 
