@@ -10,6 +10,7 @@ import general_utils.utils as utils
 
 from numba import njit
 from numba.core.errors import NumbaDeprecationWarning, NumbaPendingDeprecationWarning
+from typing import List
 
 warnings.simplefilter('ignore', category=NumbaDeprecationWarning)
 warnings.simplefilter('ignore', category=NumbaPendingDeprecationWarning)
@@ -380,8 +381,10 @@ def get_tp_fp_fn_center_patch_criteria(
         tp (pd.DataFrame): Columns: ['x', 'y', 'radius', 'label', 'matching_gt','repeted_idxs']
         fp (pd.DataFrame): Columns: ['x', 'y', 'radius', 'label', 'matching_gt','repeted_idxs']
         fn (pd.DataFrame): Columns: ['x', 'y', 'radius', 'label', 'matching_gt','repeted_idxs']
+        ignored_candidates (pd.DataFrame):
+            Columns: ['x', 'y', 'radius', 'label', 'matching_gt','repeted_idxs']
     """
-    tp, fp, fn = [], [], []
+    ignored_candidates, tp, fp, fn = [], [], [], []
     matching_gt, repeted_tp, repeted_fp = [], [], []
     detected_labels = set()
     tp_count, fp_count = 0, 0
@@ -402,11 +405,12 @@ def get_tp_fp_fn_center_patch_criteria(
         overlap_on_labels = roi_mask[patch_y1:patch_y2, patch_x1:patch_x2]
         unique_labels = [label for label in np.unique(overlap_on_labels) if label != 0]
         detected_labels.update(set(unique_labels))
-        intersection = np.sum(overlap_on_labels > 0)
+        intersection = (overlap_on_labels > 0).any()
+        just_label_to_ignore_matched = (overlap_on_labels < 0).any()
 
         # If there's intersection repeat the candidate for each gt that it matched
         # This will help a faster NMS and correct computation of metrics
-        if intersection > 0:
+        if intersection:
             count = 0
             for label in unique_labels:
                 tp.append(coords)
@@ -415,6 +419,8 @@ def get_tp_fp_fn_center_patch_criteria(
                 repeted_tp.append(tp_count)
                 count += 1
             tp_count += count
+        elif just_label_to_ignore_matched:
+            ignored_candidates.append(coords)
         else:
             fp.append(coords)
             repeted_fp.append(fp_count)
@@ -451,11 +457,17 @@ def get_tp_fp_fn_center_patch_criteria(
     fn['matching_gt'] = None
     fn['repeted_idxs'] = False
 
-    return tp, fp, fn
+    ignored_candidates = pd.DataFrame(ignored_candidates, columns=['x', 'y', 'radius'])
+    ignored_candidates['label'] = 'ignored'
+    ignored_candidates['matching_gt'] = None
+    ignored_candidates['repeted_idxs'] = False
+
+    return tp, fp, fn, ignored_candidates
 
 
 def get_froc_df_of_many_imgs_features(
-    candidates_df: pd.DataFrame, fns_df: pd.DataFrame, predictions: np.ndarray
+    candidates_df: pd.DataFrame, fns_df: pd.DataFrame, predictions: np.ndarray,
+    normal_img_ids: List[str]
 ):
     """Get the standard froc dataframe out of the candidates dataframe of many images
     and the dataframe of false negatives for those images.
@@ -465,12 +477,14 @@ def get_froc_df_of_many_imgs_features(
         fn (pd.DataFrame): Dataframe of fn. Check 'get_tp_fp_fn_center_patch_criteria'
             for more deails
         predictions (np.ndarray): prediction scores for the candidates
+        normal_img_ids (List[str]): array of bools indicating thered
     Returns:
         pd.DataFrame:
             Rows: tp, fp, fn objects
             Columns: [
                 x, y, radius, detection_labels, pred_scores, img_id,
-                matching_gt, repeted_idxs, pred_binary, class_labels
+                matching_gt, repeted_idxs, pred_binary, class_labels,
+                is_normal
             ]
     """
     # Fill metadata for TP and FP
@@ -499,11 +513,15 @@ def get_froc_df_of_many_imgs_features(
     df.loc[:, 'pred_binary'] = False
     df.loc[:, 'class_labels'] = False
 
+    df.loc[:, 'is_normal'] = False
+    df.loc[df.img_id.isin(normal_img_ids), 'is_normal'] = True
+
     return df
 
 
 def get_froc_df_of_img(
-    candidates: pd.DataFrame, fn: pd.DataFrame, predictions: np.ndarray, image_id: int
+    candidates: pd.DataFrame, fn: pd.DataFrame, predictions: np.ndarray, image_id: int,
+    is_normal: bool
 ):
     """Get the basic dataframe used for froc calculation from the detections
     of an image.
@@ -514,13 +532,15 @@ def get_froc_df_of_img(
             for more deails
         predictions (np.ndarray): Array of predictions (of the non-duplicated dataset)
         image_id (int): id of the image considered
+        is_normal (bool): whether the image is normal or not
 
     Returns:
         pd.DataFrame:
             Rows: tp, fp, fn objects
             Columns: [
                 x, y, radius, detection_labels, pred_scores, img_id,
-                matching_gt, repeted_idxs, pred_binary, class_labels
+                matching_gt, repeted_idxs, pred_binary, class_labels,
+                is_normal
             ]
     """
     # Restore repeted detections
@@ -546,6 +566,7 @@ def get_froc_df_of_img(
     # Add useful columns for froc computation
     df['pred_binary'] = False
     df['class_labels'] = False
+    df['is_normal'] = is_normal
 
     return df
 
