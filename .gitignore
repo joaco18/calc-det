@@ -11,7 +11,7 @@ data/hough_gabor_features
 database/preparing_data.py
 database/Untitled.ipynb
 notebooks/debug_dataset.ipynb
-notebooks/dim_red_haar_selection.ipynb
+notebooks/try_dim_red_haar_selection.ipynb
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
