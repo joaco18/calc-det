@@ -3,17 +3,19 @@ import multiprocessing as mp
 import numpy as np
 
 from pathlib import Path
+from scipy import spatial
 from skimage import restoration
 
 from general_utils.utils import patch_coordinates_from_center, min_max_norm, sobel_gradient
 from general_utils.dehazing import dehaze
 from mc_candidate_proposal.candidate_utils import filter_dets_from_muscle_region
 
+from mc_candidate_proposal.morphology_mc import filter_by_distance
+
 DEHAZING_PARAMS = {'omega': 0.9, 'window_size': 11, 'radius': 40, 'eps': 1e-5}
 
 HOUGH1_PARAMS = {'method': cv2.HOUGH_GRADIENT, 'dp': 1, 'minDist': 10,
                  'param1': 300, 'param2': 5,  'minRadius': 2, 'maxRadius': 10}
-
 HOUGH2_PARAMS = {'method': cv2.HOUGH_GRADIENT, 'dp': 1, 'minDist': 20,
                  'param1': 300, 'param2': 3,  'minRadius': 2, 'maxRadius': 10}
 
@@ -22,6 +24,8 @@ BACK_EXT_RADIOUS = 50
 EROSION_ITER = 20
 EROSION_SIZE = 5
 FILTER_MUSCLE_REGION = False
+MIN_HOUGH2_DISTANCE = 6
+
 this_file_path = Path(__file__).resolve()
 
 
@@ -29,21 +33,24 @@ class HoughCalcificationDetection:
     """Microcalcification detection using Hough Transforms
     """
 
-    def __init__(self, dehazing_params: dict = DEHAZING_PARAMS,
-                 back_ext_radius: int = BACK_EXT_RADIOUS,
-                 processed_imgs_path: str = this_file_path.parent.parent.parent / 'data/hough_img',
-                 hough1_params: dict = HOUGH1_PARAMS,
-                 hough2_params: dict = HOUGH2_PARAMS,
-                 erosion_iter: int = EROSION_ITER,
-                 erosion_size: int = EROSION_SIZE,
-                 filter_muscle_region: bool = FILTER_MUSCLE_REGION,
-                 n_jobs: int = 6
+    def __init__(
+        self, dehazing_params: dict = DEHAZING_PARAMS,
+        back_ext_radius: int = BACK_EXT_RADIOUS,
+        processed_imgs_path: str = this_file_path.parent.parent.parent / 'data/hough_img',
+        hough1_params: dict = HOUGH1_PARAMS,
+        hough2_params: dict = HOUGH2_PARAMS,
+        erosion_iter: int = EROSION_ITER,
+        erosion_size: int = EROSION_SIZE,
+        filter_muscle_region: bool = FILTER_MUSCLE_REGION,
+        min_hough2_dist: int = MIN_HOUGH2_DISTANCE,
+        n_jobs: int = 6
     ):
         """Constructor for HoughCalcificationDetection class
         Args:
             dehazing_params (dict): parameters used for dehazing
                 ex: {'omega': 0.9, 'window_size': 11, 'radius': 40, 'eps': 1e-5}
-            back_ext_radius (int): rolling ball radius used for background extraction
+            back_ext_radius (int, optional): rolling ball radius used for background extraction.
+                Defaults to 50.
             processed_imgs_path (str): path where to load/save preprocessed images
             hough1_params (dict): parameters for first globabl hough transform search
                 ex: {'method':cv2.HOUGH_GRADIENT, 'dp':1, 'minDist':20, 'param1':300,
@@ -51,9 +58,11 @@ class HoughCalcificationDetection:
             hough2_params (dict): parameters for second local hough transform search
                 ex: see hough1_params
             erosion_iter (int, optional): Erosions iterations for breast
-                boundary removal. Defaults to 30.
+                boundary removal. Defaults to 20.
             erosion_size (int, optional): Erosion sizes for breast boundary removals.
-                Defaults to 6.
+                Defaults to 5.
+            min_hough2_dist (int, optional): minimum distance between detections.
+                Defaults to 6
         """
 
         self.dehazing_params = dehazing_params
@@ -65,6 +74,7 @@ class HoughCalcificationDetection:
         self.erosion_size = erosion_size
         self.n_jobs = n_jobs
         self.filter_muscle_region = filter_muscle_region
+        self.min_hough2_dist = min_hough2_dist
 
     def detect(
         self, image: np.ndarray, image_id: int, load_processed_images: bool = True,
@@ -101,9 +111,16 @@ class HoughCalcificationDetection:
             # 6. Local Hough
             h2_circles = self.hough2(processed_image, h1_circles)
 
-            # TODO: Here there's a problem
             # handling duplicate candidates due to overlapping windows around hough1 candidates
             h2_circles = np.unique(h2_circles, axis=0)
+
+            # remove close but not identical candidates that weren't filtered out
+            # previously but basically overlap same mC
+            tree = spatial.cKDTree(h2_circles[:, :-1])
+            pairs = tree.query_pairs(self.min_hough2_dist)
+            indxs = filter_by_distance(h2_circles, pairs)
+            h2_circles = h2_circles[indxs]
+
         else:
             h2_circles = None
 
