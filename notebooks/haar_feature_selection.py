@@ -1,7 +1,7 @@
 from pathlib import Path
 
 THISPATH = Path(__file__).resolve()
-import sys; sys.path.insert(0, str(THISPATH.parent.parent.parent))
+import sys; sys.path.insert(0, str(THISPATH.parent.parent))
 
 import numpy as np
 import pickle
@@ -41,7 +41,8 @@ def main():
     args = parser.parse_args()
     detector = args.detector
 
-    data_path = THISPATH.parent.parent.parent.parent/'data'
+    data_path = THISPATH.parent.parent.parent/'data'
+    print(THISPATH.parent.parent.parent/'data')
     rbd_path = data_path/'gsm_imgs'
 
     logging.info('Intantiating db...')
@@ -97,7 +98,7 @@ def main():
         muscle_mask = db_sample['muscle_mask']
 
         # Avoid reprocessing
-        path = data_path / f'/haar_features_{detector}/{image_id}.fth'
+        path = (data_path / f'haar_features_{detector}'/f'{image_id}.fth')
         path.parent.mkdir(exist_ok=True, parents=True)
         if path.exists():
             continue
@@ -136,7 +137,7 @@ def main():
         image_id = db.df.iloc[idx].img_id
 
         # Load data
-        path = data_path / f'data/haar_features_{detector}/{image_id}.fth'
+        path = data_path / f'haar_features_{detector}/{image_id}.fth'
         if path.exists():
             data = pd.read_feather(path)
 
