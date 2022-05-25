@@ -23,7 +23,8 @@ from tqdm import tqdm
 
 thispath = Path(__file__).resolve()
 datapath = thispath.parent.parent / "data" / "INbreast Release 1.0"
-LESION_TYPES = ['asymmetry', 'calcification', 'cluster', 'distortion', 'mass', 'normal']
+LESION_TYPES = [
+    'asymmetry', 'calcification', 'cluster', 'distortion', 'mass', 'normal', 'ignored_lesion']
 
 
 class Dataset():
@@ -87,7 +88,8 @@ class INBreast_Dataset(Dataset):
         normalize: str = None,
         n_jobs: int = -1,
         cropped_imgs: bool = True,
-        use_muscle_mask: bool = False
+        use_muscle_mask: bool = False,
+        ignore_diameter_px: int = 15,
     ):
         """
         Constructor of INBreast_Dataset class
@@ -135,9 +137,18 @@ class INBreast_Dataset(Dataset):
                 Defaults to -1
             cropped_imgs (bool): whether the images to read has the breast region cropped.
             use_muscle_mask (bool): whether to use the pectoral muscle masks or not.
-                If image level, simply the pectoral mask is returned. If roi level, the 
+                If image level, simply the pectoral mask is returned. If roi level, the
                 pectoral mask is used to define the "in breast" patches, considering
                 pectoral muscle as if it was background with min_breast_fraction_roi
+            ignore_diameter_px (int, optional): Defaults to 15. The maximum diameter to consider
+                a labeled mc indeed as one. If set to None, no distintion will be done. If
+                a diameter is chosen then:
+                At the image level:
+                    all rois larger than that threshold will have a label index = -1 in the
+                    lesions mask
+                At the rois level:
+                    A patch having ONLY labels to ignore (all) or centered at them ('centered')
+                    will be discarded.
         """
         super(INBreast_Dataset, self).__init__()
 
@@ -158,6 +169,7 @@ class INBreast_Dataset(Dataset):
 
         # Configurations
         self.use_muscle_mask = use_muscle_mask
+        self.ignore_diameter_px = ignore_diameter_px
         self.level = level
         self.views = views
         self.partitions = partitions
@@ -188,6 +200,8 @@ class INBreast_Dataset(Dataset):
         self.limit_to_selected_views()
         if self.lesion_types is not None:
             self.filter_by_lesion_type()
+        if self.ignore_diameter_px is not None:
+            self.identify_lesions_to_ignore()
         self.add_image_label_to_image_df()
         self.flip_coordinates()
 
@@ -305,6 +319,13 @@ class INBreast_Dataset(Dataset):
         self.rois_df = self.rois_df.loc[2 * self.rois_df.radius <= self.max_lesion_diam_px, :]
         self.rois_df.reset_index(inplace=True, drop=True)
 
+    def identify_lesions_to_ignore(self):
+        """
+        Change the lesion type to 'ignored_lesion' if is bigger than the desired threshold
+        """
+        self.rois_df.loc[2 * self.rois_df.radius >= self.ignore_diameter_px, 'lesion_type'] = \
+            'ignored_lesion'
+
     def filter_by_lesion_type(self):
         """
         Filters the images by view based on the values
@@ -393,11 +414,21 @@ class INBreast_Dataset(Dataset):
         mask_patches = slice_image(mask, window_size=self.patch_size, stride=self.stride)
 
         # Filter rois already filtered from the rois_df
-        present_indx = self.rois_df.loc[self.rois_df.img_id == img_id, 'index_in_image'].tolist()
+        # Identify and remove patches of undesired lesion types
+        present_indx = self.rois_df.loc[self.rois_df.img_id == img_id, 'index_in_image'].values
         indexes_to_filter = \
             [index for index in np.unique(mask_patches) if index not in present_indx]
         for index in indexes_to_filter:
             mask_patches = np.where(mask_patches == index, 0, mask_patches)
+
+        # Identify labels to ignore, and relabel them with -1 index
+        if self.ignore_diameter_px is not None:
+            indexes_to_ignore = self.rois_df.loc[
+                (self.rois_df.img_id == img_id) & (self.rois_df.lesion_type == 'ignored_lesion'),
+                'index_in_image'].values
+            if len(indexes_to_ignore) != 0:
+                for index in indexes_to_ignore:
+                    mask_patches = np.where(mask_patches == index, -1, mask_patches)
 
         # count number of pixels per lesion in each roi
         index_freqs = [dict(zip(*np.unique(m, return_counts=True))) for m in mask_patches]
@@ -410,21 +441,30 @@ class INBreast_Dataset(Dataset):
             image_patches_df.lesion_type.values, index=image_patches_df.index_in_image
         ).to_dict()
         rois_types[0] = "normal"
+        if self.ignore_diameter_px is not None:
+            rois_types[-1] = "ignored_lesion"
         patches_descr = patches_descr.rename(columns=rois_types)
 
         # grouping rois with the same type
-        patches_descr = patches_descr.groupby(lambda x: x, axis=1).sum() / \
-            (image_patches.shape[1]*image_patches.shape[2])
+        patches_descr = patches_descr.groupby(lambda x: x, axis=1).sum()
 
         # select only rois from lesion types selection.
-        patches_descr = patches_descr[patches_descr.columns.intersection(self.lesion_types)]
+        patches_descr = patches_descr[patches_descr.columns.intersection(
+            self.lesion_types+['ignored_lesion'])]
 
         # standartize df to habe always same number and types of columns
         for lt in LESION_TYPES:
-            if lt not in patches_descr.columns:
+            if (lt not in patches_descr.columns) and (lt != 'normal'):
                 patches_descr[lt] = 0
 
-        # Get the percentage of breast in the roi. If the muscle mask is used this cosideres
+        # Filter patches with ONLY labels to ignore
+        if self.ignore_diameter_px is not None:
+            patches_with_labels = np.unique(np.where(mask_patches > 0)[0])
+            patches_to_ignore = np.unique(np.where(mask_patches < 0)[0])
+            patch_idx_to_ignore = [
+                idx for idx in patches_to_ignore if idx not in patches_with_labels]
+
+        # Get the percentage of breast in the roi. If the muscle mask is used this considers
         # brest the non-muscle region inside the breast
         if self.use_muscle_mask:
             muscle_mask = padd_image(muscle_mask, self.patch_size)
@@ -441,6 +481,8 @@ class INBreast_Dataset(Dataset):
         # Filter Rois with more background than breast or just bkgrd
         keep_idx = \
             patches_descr.loc[patches_descr.breast_fraction >= self.min_breast_frac].index.tolist()
+        if self.ignore_diameter_px is not None:
+            keep_idx = [idx for idx in keep_idx if idx not in patch_idx_to_ignore]
         patches_descr = patches_descr.iloc[keep_idx]
         image_patches = image_patches[keep_idx, :, :]
         mask_patches = mask_patches[keep_idx, :, :]
@@ -493,10 +535,12 @@ class INBreast_Dataset(Dataset):
         # Add the same label as expected in the constructor
         patches_descr['label'] = False
         for les_type in LESION_TYPES:
+            if les_type == 'normal':
+                continue
             patches_descr['label'] = \
                 patches_descr['label'] | np.where(patches_descr[les_type] != 0, True, False)
+            patches_descr[les_type] = np.where(patches_descr[les_type] != 0, True, False)
         patches_descr['label'] = np.where(patches_descr['label'], 'abnormal', 'normal')
-
         return patches_descr
 
     def centered_patches_extraction(self):
@@ -547,7 +591,7 @@ class INBreast_Dataset(Dataset):
         """
         # Get the columns of the returned df
         columns_of_interest = ['case_id', 'img_id', 'side', 'view', 'acr', 'birads']
-        column_names = LESION_TYPES + \
+        column_names = [lt for lt in LESION_TYPES if lt != 'normal'] + \
             ['breast_fraction', 'patch_bbox', 'filename', 'mask_filename'] + \
             columns_of_interest + ['label']
 
@@ -584,16 +628,27 @@ class INBreast_Dataset(Dataset):
                 muscle_mask = cv2.flip(muscle_mask, 1)
 
         # Filter rois already filtered from the rois_df
-        present_indx = self.rois_df.loc[self.rois_df.img_id == img_id, 'index_in_image'].tolist()
+        present_indx = self.rois_df.loc[self.rois_df.img_id == img_id, 'index_in_image'].values
         indexes_to_filter = \
             [index for index in np.unique(mask) if index not in present_indx]
         for index in indexes_to_filter:
             mask = np.where(mask == index, 0, mask)
 
+        # Identify labels to ignore, and relabel them with -1 index
+        if self.ignore_diameter_px is not None:
+            indexes_to_ignore = self.rois_df.loc[
+                (self.rois_df.img_id == img_id) & (self.rois_df.lesion_type == 'ignored_lesion'),
+                'index_in_image'].values
+            if len(indexes_to_ignore) != 0:
+                for index in indexes_to_ignore:
+                    mask = np.where(mask == index, 0, mask)
+
         # Accumulator for the output df
         patches_descr = []
 
         for k, (index, roi) in enumerate(rois_subset_df.iterrows()):
+            if roi['lesion_type'] == 'ignored_lesion':
+                continue
             patches_descr_row = []
             center_column_name = 'center_crop' if self.cropped_imgs else 'center'
             center = roi[center_column_name]
@@ -635,22 +690,23 @@ class INBreast_Dataset(Dataset):
             cv2.imwrite(str(self.patch_img_path/str(img_id)/patch_filename), image_patch)
             if mask_patch.any():  # Empty images cannot be stored
                 (self.patch_mask_path/str(img_id)).mkdir(parents=True, exist_ok=True)
-                patch_mask_name = f'{img_id}_les_patch_{k}_mask.png'
-                cv2.imwrite(str(self.patch_mask_path/str(img_id)/patch_mask_name), mask_patch)
+                patch_mask_name = f'{str(img_id)}/{img_id}_les_patch_{k}_mask.png'
+                cv2.imwrite(str(self.patch_mask_path/patch_mask_name), mask_patch)
             else:
                 patch_mask_name = 'empty_mask'
 
             # Complete row of the dataframe
             for lt in LESION_TYPES:
-                if lt == roi['lesion_type']:
-                    patches_descr_row.append(1)
+                if lt == 'normal':
+                    continue
+                if (lt == roi['lesion_type']):
+                    patches_descr_row.append(True)
                 else:
-                    patches_descr_row.append(0)
+                    patches_descr_row.append(False)
 
             patch_bbox = np.array([[patch_x1, patch_y1], [patch_x2, patch_y2]])
             patches_descr_row.extend(
-                [breast_fraction, patch_bbox, f'{img_id}/{patch_filename}',
-                 f'{img_id}/{patch_mask_name}']
+                [breast_fraction, patch_bbox, f'{img_id}/{patch_filename}', patch_mask_name]
             )
             for element in columns_of_interest:
                 patches_descr_row.append(self.img_df[element].iloc[idx])
@@ -659,6 +715,13 @@ class INBreast_Dataset(Dataset):
             # Append row to the dataframe content
             patches_descr.append(patches_descr_row)
         return pd.DataFrame(data=patches_descr, columns=column_names)
+
+    def get_normal_imgs_ids(self):
+        return self.img_df.loc[self.img_df.img_label == 'normal', 'img_id'].unique()
+
+    def get_free_of_selected_lesions_imgs_ids(self):
+        img_ids_with_rois = self.rois_df.img_id.unique()
+        return [img_id for img_id in self.img_df.img_id.unique() if img_id not in img_ids_with_rois]
 
     def __len__(self):
         return len(self.labels)
@@ -687,7 +750,8 @@ class INBreast_Dataset(Dataset):
 
         # Return bboxes coords for det CNNs and metrics
         if self.level == 'image':
-            rois_from_img = self.rois_df.img_id == img_id
+            rois_from_img = \
+                (self.rois_df.img_id == img_id) & (self.rois_df.lesion_type != 'ignored_lesion')
             lesion_tag = 'lesion_bbox_crop' if self.cropped_imgs else 'lesion_bbox'
             bboxes_coords = self.rois_df.loc[rois_from_img, lesion_tag].values
             sample["lesion_bboxes"] = [
@@ -695,6 +759,16 @@ class INBreast_Dataset(Dataset):
                 else bbox for bbox in bboxes_coords
             ]
             sample['radiuses'] = self.rois_df.loc[rois_from_img, 'radius'].values
+            if self.ignore_diameter_px is not None:
+                ignored_rois_from_img = \
+                    (self.rois_df.img_id == img_id) & (self.rois_df.lesion_type == 'ignored_lesion')
+                bboxes_coords = self.rois_df.loc[ignored_rois_from_img, lesion_tag].values
+                sample["ignored_lesion_bboxes"] = [
+                    utils.load_coords(bbox) if isinstance(bbox, str)
+                    else bbox for bbox in bboxes_coords
+                ]
+                sample['ignored_lesion_radiuses'] = self.rois_df.loc[
+                    ignored_rois_from_img, 'radius'].values
         else:
             sample["patch_bbox"] = [self.df['patch_bbox'].iloc[idx]]
 
@@ -716,6 +790,8 @@ class INBreast_Dataset(Dataset):
                     mask_filename = self.patch_mask_path / mask_filename
                     mask = cv2.imread(str(mask_filename), cv2.IMREAD_ANYDEPTH)
                     sample["lesion_bboxes"] = utils.get_bbox_of_lesions_in_patch(mask)
+                    sample["ignored_lesion_bboxes"] = utils.get_bbox_of_lesions_in_patch(
+                        mask, ignored_lesions=True)
                 else:
                     mask = np.zeros(img.shape)
                     sample["lesion_bboxes"] = []
@@ -773,10 +849,17 @@ class INBreast_Dataset(Dataset):
         """
         rois_from_img = self.rois_df.img_id == self.df['img_id'].iloc[idx]
         lesion_idxs = self.rois_df.loc[rois_from_img, 'index_in_image'].values
+        if self.ignore_diameter_px is not None:
+            lesion_idxs_to_ignore = self.rois_df.loc[
+                rois_from_img & (self.rois_df.lesion_type == 'ignored_lesion'),
+                'index_in_image'].values
+
         if len(lesion_idxs) != 0:
             for les_idx in np.unique(mask):
                 if les_idx not in lesion_idxs:
                     mask[mask == les_idx] = 0
+                elif (self.ignore_diameter_px is not None) and (les_idx in lesion_idxs_to_ignore):
+                    mask[mask == les_idx] = -1
         else:
             mask = np.zeros(mask.shape)
         return mask
