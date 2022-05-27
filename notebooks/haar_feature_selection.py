@@ -511,13 +511,11 @@ def main():
             clf.fit(train_X, train_y)
 
             # Store the trained models
-
-            filename = f'RF_all_{k}.sav'
             with open(models_path / filename, 'wb') as f:
                 pickle.dump(clf, f)
         else:
             with open(models_path / filename, 'rb') as f:
-                clf = pickle.dump(f)
+                clf = pickle.load(f)
 
         # Asses performance
         test_y_predicted = clf.predict_proba(test_X)[:, 1]
@@ -614,7 +612,7 @@ def main():
                         pickle.dump(clf, f)
                 else:
                     with open(models_path / filename, 'rb') as f:
-                        clf = pickle.dump(f)
+                        clf = pickle.load(f)
 
                 # Performance
                 test_y_predicted = clf.predict_proba(test_X)[:, 1]
