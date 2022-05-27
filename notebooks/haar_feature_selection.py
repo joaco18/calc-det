@@ -504,7 +504,7 @@ def main():
         del test_df
 
         filename = f'RF_all_{k}.sav'
-        if not (models_path / filename).exists:
+        if not (models_path / filename).exists():
             # Train a random forest classifier
             clf = RandomForestClassifier(
                 n_estimators=1000, max_depth=data.shape[1]-4, n_jobs=-1, random_state=0)
