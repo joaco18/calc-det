@@ -325,7 +325,7 @@ def format_roi_df(rois_df: pd.DataFrame):
         'Asymmetry': 'asymmetry',
         'Unnamed': 'calcification',
         'Point 1': 'unkown',
-        'Calcifications': 'calcification',
+        'Calcifications': 'cluster',
         'Assymetry': 'asymmetry',
         'Spiculated region': 'spiculated_region',
     }

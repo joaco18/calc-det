@@ -10,15 +10,8 @@ data/recounstructed_by_dialation_img
 data/hough_gabor_features
 database/preparing_data.py
 database/Untitled.ipynb
-stolen
-stolen/
-notebooks/data_parsing_dev.ipynb
 notebooks/debug_dataset.ipynb
-notebooks/show_haar.ipynb
-models/HDoGDetector/temp_main.py
-models/general_utils/
-data/Bria/
-data/data_for_bria2014.csv
+notebooks/try_dim_red_haar_selection.ipynb
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

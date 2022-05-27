@@ -167,7 +167,7 @@ def froc_curve(
         froc_df.loc[classif_as_neg & (froc_df.detection_labels == 'FP'), 'class_labels'] = 'TN'
 
         n_TP = len(froc_df.loc[froc_df.class_labels == 'TP'])
-        n_FP = len(froc_df.loc[froc_df.class_labels == 'FP'])
+        n_FP = len(froc_df.loc[(froc_df.class_labels == 'FP') & (froc_df.is_normal)])
         n_FN = len(froc_df.loc[froc_df.class_labels == 'FN'])
 
         sens = n_TP / (n_TP + n_FN)
@@ -175,8 +175,7 @@ def froc_curve(
 
         sensitivities.append(sens)
         avgs_fp_per_image.append(avg_nfp_per_image)
-
-        if cut_on_50fpi and avg_nfp_per_image > 50:
+        if cut_on_50fpi and (avg_nfp_per_image > 50):
             break
     return sensitivities, avgs_fp_per_image, thresholds
 

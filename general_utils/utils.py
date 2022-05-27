@@ -3,6 +3,7 @@ import numpy as np
 import logging
 from numba import njit
 from itertools import zip_longest
+from skimage.measure import label
 
 logging.basicConfig(level=logging.INFO)
 
@@ -245,11 +246,14 @@ def blockwise_retrieval(t, size=2, fillvalue=None):
     return zip_longest(*[it]*size, fillvalue=fillvalue)
 
 
-def get_bbox_of_lesions_in_patch(mask):
+def get_bbox_of_lesions_in_patch(mask: np.ndarray, ignored_lesions: bool = False):
+    if ignored_lesions:
+        mask = np.where(mask == -1, 255, 0)
+        mask = label(mask, background=0, connectivity=1)
     rois_idxs = np.unique(mask)
     lesion_bboxes = []
     for idx in rois_idxs:
-        if idx == 0:
+        if (idx == 0) or (idx == -1):
             continue
         [y, x] = np.where(mask == idx)
         tl = (x.min(), y.min())

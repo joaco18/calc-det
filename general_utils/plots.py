@@ -158,7 +158,7 @@ def plot_gabor_filters(filters, plots_columns=3):
 
 def plot_froc(
     fpis: np.ndarray, tprs: np.ndarray, total_mC: int = None,
-    label: str = '', new_figure: bool = True
+    label: str = '', ax: int = None, title: str = None, cut_on_50fpi: bool=True
 ):
     """Plot FROC curve
     Args:
@@ -166,29 +166,39 @@ def plot_froc(
         tprs (np.ndarray): Sensitivity at different thresholds
         total_mC (int, optional): Total number of ground truth mC. Defaults to None.
         label (str, optional): Label of the line. Defaults to ''.
-        new_figure (bool, optional): Whether to generate a new figure or not, allows overlapping.
-            Defaults to True.
+        ax (bool, optional): Whether to plot the figure in the ax of another plot.
+            Defaults to None.
+        title (str, optional): Optional title to include in the figure
+        cut_on_50fpi (bool): whether to cut the froc plot at 50fpi. Defaults to True
     """
-    if new_figure:
-        plt.figure(figsize=(8, 8))
-    plt.xlabel('FPpI')
+    ax_ = ax
+    if ax_ is None:
+        f, ax = plt.subplots(1, 1, figsize=(8, 8))
+    ax.set_xlabel('FPpI')
     if total_mC is not None:
-        plt.ylabel(f'TPR ({total_mC}) mC')
+        ax.set_ylabel(f'TPR ({total_mC}) mC')
     else:
-        plt.ylabel('TPR')
-    plt.title('FROC curve')
-    plt.plot(fpis, tprs, c=cmap(0))
-    plt.ylim((0, 1))
-    plt.legend([f"{label} AUC: {auc(fpis, tprs)}"])
+        ax.set_ylabel('TPR')
+    if title is not None:
+        ax.set_title(title)
+    else:
+        ax.set_title('FROC curve')
+
+    fpis = np.asarray(fpis)
+    ax.plot(fpis, tprs, c=cmap(0))
+    ax.set_ylim((0, 1))
+    if cut_on_50fpi:
+        ax.set_xlim(-0.01, 50)
+    ax.legend([f"{label} AUC: {auc(fpis/fpis.max(), tprs)}"])
     sns.despine()
-    if new_figure:
+    if ax_ is None:
         plt.show()
 
 
 def plot_bootstrap_froc(
     fpis: np.ndarray, tprs: np.ndarray, std_tprs: np.ndarray,
-    total_mC: int = None, label: str = '', new_figure: bool = True,
-    cut_on_50fpi: bool = True
+    total_mC: int = None, label: str = '',  ax: int = None,
+    title: str = None, cut_on_50fpi: bool = True
 ):
     """Plot FROC curve
     Args:
@@ -198,35 +208,34 @@ def plot_bootstrap_froc(
             over the bootstrap samples.
         total_mC (int, optional): Total number of ground truth mC. Defaults to None.
         label (str, optional): Label of the line. Defaults to ''.
-        new_figure (bool, optional): Whether to generate a new figure or not, allows overlapping.
-            Defaults to True.
+        ax (bool, optional): Whether to plot the figure in the ax of another plot.
+            Defaults to None.
+        title (str, optional): Defaults to None.
         cut_on_50fpi (bool): whether to cut the froc l¿plt at 50fpi. Defaults to True
     """
-    # limit point calculation till fpis<=50
-    if cut_on_50fpi:
-        area_lim_mask = np.array(fpis) <= 50
-        fpis = np.array(fpis)[area_lim_mask]
-        tprs = np.array(tprs)[area_lim_mask]
-        std_tprs = np.array(std_tprs)[area_lim_mask]
-    
     max_tprs = tprs + std_tprs
     min_tprs = tprs - std_tprs
 
-    if new_figure:
-        plt.figure(figsize=(8, 8))
-    plt.xlabel('FPpI')
+    ax_ = ax
+    if ax_ is None:
+        f, ax = plt.subplots(1, 1, figsize=(8, 8))
+    ax.set_xlabel('FPpI')
     if total_mC is not None:
-        plt.ylabel(f'TPR ({total_mC}) mC')
+        ax.set_ylabel(f'TPR ({total_mC}) mC')
     else:
-        plt.ylabel('TPR')
-    plt.title('FROC curve')
-    plt.plot(fpis, tprs, c=cmap(0))
-    plt.xlim(-0.01, 50)
-    plt.fill_between(fpis, min_tprs, max_tprs, alpha=0.3, color=cmap(0))
-    plt.ylim((0, 1))
-    plt.legend([f"{label} AUC: {auc(fpis/fpis.max(), tprs)}"])
+        ax.set_ylabel('TPR')
+    if title is not None:
+        ax.set_title(title)
+    else:
+        ax.set_title('FROC curve')
+    ax.plot(fpis, tprs, c=cmap(0))
+    if cut_on_50fpi:
+        ax.set_xlim(-0.01, 50)
+    ax.fill_between(fpis, min_tprs, max_tprs, alpha=0.3, color=cmap(0))
+    ax.set_ylim((0, 1))
+    ax.legend([f"{label} AUC: {auc(fpis/fpis.max(), tprs)}"])
     sns.despine()
-    if new_figure:
+    if ax_ is None:
         plt.show()
 
 
