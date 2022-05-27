@@ -100,7 +100,7 @@ class MorphologyCalcificationDetection:
         # filter by max_radius
         candidate_blobs = candidate_blobs[candidate_blobs[:, 2] <= max_radius]
 
-        return candidate_blobs
+        return candidate_blobs.astype(int)
 
     def reconstruction_by_dialation(
         self, mask: np.ndarray, rect_size: int = 3, circle_size: int = 20
