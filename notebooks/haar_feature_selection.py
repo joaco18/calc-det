@@ -1,3 +1,4 @@
+from operator import length_hint
 from pathlib import Path
 
 THISPATH = Path(__file__).resolve()
@@ -109,6 +110,15 @@ def main():
             # labeling of candidates:
             tp, fp, fn, ignored_candidates = get_tp_fp_fn_center_patch_criteria(
                 candidates, image_mask, None, 14)
+            n_TPs = len(tp)
+            if n_TPs == 0:
+                n_FP = len(fp)
+                sample_size = int(n_FP * 0.1)
+            else:
+                sample_size = n_TPs * 10
+            if len(fp) >= sample_size:
+                fp = fp.sample(sample_size, random_state=0, replace=False)
+
             candidates = pd.concat([tp, fp], axis=0, ignore_index=True)
 
             # Extracting features
@@ -638,10 +648,10 @@ def main():
         aucs_test.to_csv(models_path/'aucs_test_all_sorted.csv')
 
         aupr_train = pd.DataFrame.from_dict(aupr_train_feat_sel_all)
-        aupr_train.to_csv(path/'aupr_train_all_sorted.csv')
+        aupr_train.to_csv(models_path/'aupr_train_all_sorted.csv')
 
         aucs_train = pd.DataFrame.from_dict(aucs_train_feat_sel_all)
-        aucs_train.to_csv(path/'auc_train_all_sorted.csv')
+        aucs_train.to_csv(models_path/'auc_train_all_sorted.csv')
 
 
 if __name__ == '__main__':
