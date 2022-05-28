@@ -334,7 +334,7 @@ def patches_intersections_with_labels(
         binary (bool, optional): Whether to return True or False if there was an intersection
             instead of the counts. Defaults to False.
     Returns:
-        intersections (np.ndarray): number of pixels of intersection with the gt mask 
+        intersections (np.ndarray): number of pixels of intersection with the gt mask
             for each candidate. If Binary then this is binarized.
     """
     intersections = np.empty(len(candidates))

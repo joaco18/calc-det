@@ -522,7 +522,8 @@ class INBreast_Dataset(Dataset):
                 roi_mask_name = f'{img_id}_roi_{roi_idx}_mask.png'
                 patch_mask_filenames.append(f'{img_id}/{roi_mask_name}')
                 (self.patch_mask_path/str(img_id)).mkdir(parents=True, exist_ok=True)
-                cv2.imwrite(str(self.patch_mask_path/str(img_id)/roi_mask_name), mask_patches[roi_idx, :, :])
+                patch_mask_filename = str(self.patch_mask_path/str(img_id)/roi_mask_name)
+                cv2.imwrite(patch_mask_filename, mask_patches[roi_idx, :, :])
             else:
                 patch_mask_filenames.append('empty_mask')
 
@@ -780,7 +781,8 @@ class INBreast_Dataset(Dataset):
                 if not mask_path.exists():
                     mask = np.zeros(img.shape)
                 else:
-                    mask = cv2.imread(str(mask_path), cv2.IMREAD_GRAYSCALE)
+                    mask = cv2.imread(str(mask_path), cv2.IMREAD_ANYDEPTH)
+                    mask = mask.astype(np.int16)
                     mask = self.adjust_mask_to_selected_lesions(mask, idx)
                     if side == 'R':
                         mask = cv2.flip(mask, 1)
