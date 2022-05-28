@@ -128,8 +128,9 @@ class HoughCalcificationDetection:
             h1_circles = filter_dets_from_muscle_region(h1_circles, muscle_mask)
             if hough2:
                 h2_circles = filter_dets_from_muscle_region(h2_circles, muscle_mask)
-
-        return h1_circles, h2_circles
+        if hough2:
+            return h1_circles, h2_circles
+        return h1_circles
 
     def load_preprocessed_image(self, image, image_id, load_processed_images):
         """Loads images and performs image enhancing needed for Hough transform.
