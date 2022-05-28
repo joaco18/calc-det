@@ -253,7 +253,8 @@ def main():
     # OUR FEATURES
 
     logging.info('Starting analysis of our features...')
-    if not (data_path / f'haar_features_{detector}/all_cases_our_features_10to1_1000_selection.fth').exists():
+    if not (data_path / f'haar_features_{detector}' /
+            'all_cases_our_features_10to1_1000_selection.fth').exists():
         # Load all aour features
         logging.info('Loading data...')
         data = pd.concat([
@@ -284,7 +285,7 @@ def main():
         for k, test_img_id in tqdm(enumerate(utils.blockwise_retrieval(data.img_id.unique(), n))):
             if k == folds + 1:
                 continue
-            
+
             # Divide train and test based on cases (cross validation image wise)
             train_df = data[~data.img_id.isin(test_img_id)]
             train_df = train_df.sample(frac=1, random_state=0)
@@ -358,13 +359,16 @@ def main():
     # SKIMAGE FEATURES
 
     logging.info('Starting analysis of skimage features...')
-    if not (data_path / f'haar_features_{detector}/all_cases_skimage_features_10to1_2000_selection.fth').exists():
+    if not (data_path / f'haar_features_{detector}' /
+            'all_cases_skimage_features_10to1_2000_selection.fth').exists():
         # Load all skimage features
         logging.info('Loading data...')
 
         data = pd.concat([
-            pd.read_feather(data_path / f'haar_features_{detector}/all_feats_10to1_pt0_skimage.fth'),
-            pd.read_feather(data_path / f'haar_features_{detector}/all_feats_10to1_pt1_skimage.fth')
+            pd.read_feather(
+                data_path / f'haar_features_{detector}/all_feats_10to1_pt0_skimage.fth'),
+            pd.read_feather(
+                data_path / f'haar_features_{detector}/all_feats_10to1_pt1_skimage.fth')
         ], ignore_index=True)
 
         # CHOOSE THE NUMBER OF CASES TO CONSIDER: IN MY CASE I COULD HANDDLE 100
@@ -448,25 +452,30 @@ def main():
         logging.info('Storing selection...')
         del data
         data = pd.concat([
-            pd.read_feather(data_path / f'haar_features_{detector}/all_feats_10to1_pt0_skimage.fth'),
-            pd.read_feather(data_path / f'haar_features_{detector}/all_feats_10to1_pt1_skimage.fth')
+            pd.read_feather(
+                data_path / f'haar_features_{detector}/all_feats_10to1_pt0_skimage.fth'),
+            pd.read_feather(
+                data_path / f'haar_features_{detector}/all_feats_10to1_pt1_skimage.fth')
         ], ignore_index=True)
 
         metadata_cols = [col for col in data.columns if ('haar' not in col)]
         selected_feats_cols = data.columns.values[sorted_features[:OUR_CUT]].tolist()
         data.loc[:, selected_feats_cols+metadata_cols].reset_index(drop=True).to_feather(
-            data_path / f'haar_features_{detector}/all_cases_skimage_features_10to1_2000_selection.fth')
+            (data_path / f'haar_features_{detector}' /
+             'all_cases_skimage_features_10to1_2000_selection.fth'))
         del data
 
     # COMBINED ANALYSIS
     logging.info('Starting combined analysis...')
     logging.info('Loading data...')
-    if not(data_path / f'haar_features_{detector}/all_cases_all_features_10to1_3000_selection.fth').exists():
+    if not(data_path / f'haar_features_{detector}' /
+            'all_cases_all_features_10to1_3000_selection.fth').exists():
         our_features = pd.read_feather(
             data_path / f'haar_features_{detector}/all_cases_our_features_10to1_1000_selection.fth')
         feature_cols = [col for col in our_features.columns if ('haar' in col)]
         skimage_features = pd.read_feather(
-            data_path / f'haar_features_{detector}/all_cases_skimage_features_10to1_2000_selection.fth')
+            (data_path / f'haar_features_{detector}' /
+             'all_cases_skimage_features_10to1_2000_selection.fth'))
         data = pd.concat(
             [our_features.loc[:, feature_cols], skimage_features], axis=1, ignore_index=True)
         data.columns = feature_cols + skimage_features.columns.tolist()
@@ -591,7 +600,8 @@ def main():
             feature_selection = sorted_features[:i]
 
             data_ = data.iloc[:, feature_selection.astype(int).tolist() + [3000, 3001, 3002, 3003]]
-            for k, test_img_id in tqdm(enumerate(utils.blockwise_retrieval(data_.img_id.unique(), n))):
+            for k, test_img_id in tqdm(
+                    enumerate(utils.blockwise_retrieval(data_.img_id.unique(), n))):
                 if k == folds + 1:
                     continue
 
