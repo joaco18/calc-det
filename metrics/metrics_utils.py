@@ -359,7 +359,8 @@ def patches_intersections_with_labels(
 
 
 def get_tp_fp_fn_center_patch_criteria(
-    candidates: np.ndarray, roi_mask: np.ndarray, center_region_size: int, patch_size: int
+    candidates: np.ndarray, roi_mask: np.ndarray, center_region_size: int, patch_size: int,
+    use_euclidean_dist: bool = False
 ):
     """
     Given an array of candidates and the mask of labels, it computes the itersection of a
@@ -377,6 +378,10 @@ def get_tp_fp_fn_center_patch_criteria(
         center_region_size (int): region in the center of the patch to consider for labeling.
             If set to None the hole patch is considered for the intersection.
         patch_size (int): size of the patch to evaluate
+        use_euclidean_dist (bool): whether to use euclidean distance (True - aka circular patch)
+            or p=infinity minkowsky distance (False - aka rectangular patch), between the center
+            of the detect candidate and the closest point of sorrounding ground truth labels.
+            Defaults to False
     Returns:
         tp (pd.DataFrame): Columns: ['x', 'y', 'radius', 'label', 'matching_gt','repeted_idxs']
         fp (pd.DataFrame): Columns: ['x', 'y', 'radius', 'label', 'matching_gt','repeted_idxs']
@@ -386,6 +391,13 @@ def get_tp_fp_fn_center_patch_criteria(
     """
     ignored_candidates, tp, fp, fn = [], [], [], []
     matching_gt, repeted_tp, repeted_fp = [], [], []
+    if use_euclidean_dist:
+        if patch_size % 2 == 0:
+            patch_size = patch_size + 1
+        center = patch_size//2
+        circular_mask = np.zeros((patch_size, patch_size), dtype='uint8')
+        circular_mask = cv2.circle(
+            circular_mask, center=(center, center),radius=center, color=1, thickness=-1)
     detected_labels = set()
     tp_count, fp_count = 0, 0
     for coords in candidates:
@@ -403,6 +415,8 @@ def get_tp_fp_fn_center_patch_criteria(
 
         # Get the overlap with the rois mask and determine the unique labels
         overlap_on_labels = roi_mask[patch_y1:patch_y2, patch_x1:patch_x2]
+        if use_euclidean_dist:
+            overlap_on_labels = overlap_on_labels * circular_mask
         unique_labels = [label for label in np.unique(overlap_on_labels) if label != 0]
         detected_labels.update(set(unique_labels))
         intersection = (overlap_on_labels > 0).any()
