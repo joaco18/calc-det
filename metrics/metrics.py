@@ -148,7 +148,8 @@ def froc_curve(
     total_n_images = len(froc_df.img_id.unique())
     sensitivities = []
     avgs_fp_per_image = []
-    # mC that we didn't even detect with our detectors (constant FN)
+    
+    # FN that are constant (were not even detected by candidate proposal)
     n_FN = (froc_df.detection_labels == 'FN').sum()
     
     forc_df_sorted = froc_df.sort_values(by=['pred_scores'], ascending=False)
@@ -158,13 +159,17 @@ def froc_curve(
     
     if thresholds is None:
         thresholds = np.sort(froc_df.pred_scores.unique())[::-1]
-    
+        
     for thr in thresholds:
         froc_df_slice = forc_df_sorted[forc_df_sorted.pred_scores>=thr]
         
+        # detected TP in the thresholded slice of predictions
         n_TP = (froc_df_slice.detection_labels == 'TP').sum()
-        n_FP = ((froc_df_slice.detection_labels == 'FP')&(froc_df_slice.is_normal)).sum()
-        # mC that didn't pass classification (dynamic FN which depent on threshold)
+        
+        # FP are counted only on normal iamges
+        n_FP = ((froc_df_slice.detection_labels == 'FP') & (froc_df_slice.is_normal)).sum()
+        
+        # FN number which changes based on threshold
         add_FN = total_detected_mC - n_TP
         
         sens = n_TP / (n_TP + n_FN + add_FN)
@@ -172,6 +177,7 @@ def froc_curve(
 
         sensitivities.append(sens)
         avgs_fp_per_image.append(avg_nfp_per_image)
+        
         if cut_on_50fpi and (avg_nfp_per_image > 50):
             break
     return sensitivities, avgs_fp_per_image, thresholds
