@@ -10,9 +10,12 @@ Start by creating a new conda environment
 
 ``` conda update -n base -c defaults conda ```
 
-``` conda create -n calc_det anaconda ``` 
+``` conda create -n calc_det anaconda ```
 
 ``` conda activate calc_det ```
+
+``` conda install pytorch torchvision torchaudio cudatoolkit=10.2 -c pytorch ```
+
 
 > TODO: Define a lighter version of the environment (not using conda create -n bla *anaconda*)
 
@@ -57,15 +60,7 @@ Install requirements:
 
 3. Run the following command:
 
-
     ```python database/parsing_metadata.py --ib-path data/INbreast\ Release\ 1.0/ --rp --v --cb --pect-musc-mask```
-
-### Option B
-
-Use the tracked version of the dataset with DVC following the next steps:
-
-1. 
-2. 
 
 ### Coments for developers:
     I suggest using:
