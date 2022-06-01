@@ -21,7 +21,6 @@ from roi_extraction import slice_image, padd_image, view_as_windows
 from typing import List, Tuple
 from tqdm import tqdm
 
-thispath = Path(__file__).resolve()
 datapath = thispath.parent.parent / "data" / "INbreast Release 1.0"
 LESION_TYPES = [
     'asymmetry', 'calcification', 'cluster', 'distortion', 'mass', 'normal', 'ignored_lesion']
@@ -74,13 +73,13 @@ class INBreast_Dataset(Dataset):
         keep_just_images_of_lesion_type: List[str] = False,
         transform: List[str] = None,
         data_aug: List[str] = None,
-        nrows: int = None,
         seed: int = 0,
         return_lesions_mask: bool = False,
         level: str = 'image',
         partitions: List[str] = ['train', 'validation', 'test'],
         max_lesion_diam_mm: float = 1.0,
         extract_patches: bool = True,
+        delete_previous: bool = True,
         extract_patches_method: str = 'all',  # 'centered'
         patch_size: int = 12,
         stride: Tuple[int] = 1,
@@ -112,8 +111,6 @@ class INBreast_Dataset(Dataset):
             transform (List[str], optional): List of transformations. Defaults to None.
             data_aug (List[str], optional): List of data augmentation procedures.
                 Defaults to None.
-            nrows (int, optional): List to filter the dataset to a number of examples.
-                Defaults to None.
             seed (int, optional): Seed to gurantee reproducibility. Defaults to 0.
             return_lesions_mask (bool, optional): Whether to return the lesion mask for each
                 example or not. Defaults to False.
@@ -124,6 +121,8 @@ class INBreast_Dataset(Dataset):
             max_lesion_diam_mm (float): Maximum horizontal or vertical diameter allowed for the
                 lesion. If None, no filtring is applied
             extract_patches (bool, optional): Whether to extract the rois or not. Defaults to True.
+            delete_previous (bool, optional): Whether to remove preexisting files before extracting crops.
+                Defaults to True
             extract_patches_method (str, optional): Which method to use in the rois extraction.
                 One of ['all', 'centered']. Defaults to 'all'.
             patch_size (int): size of the roi in pixels. Only used if rois are extracted.
@@ -185,8 +184,8 @@ class INBreast_Dataset(Dataset):
 
         # Load data
         self.check_paths_exist()
-        self.rois_df = pd.read_csv(self.rois_df_path, nrows=nrows, index_col=0)
-        self.img_df = pd.read_csv(self.img_df_path, nrows=nrows, index_col=0)
+        self.rois_df = pd.read_csv(self.rois_df_path, index_col=0)
+        self.img_df = pd.read_csv(self.img_df_path, index_col=0)
 
         # Add validation partition
         self.generate_validation_partition()
@@ -208,12 +207,13 @@ class INBreast_Dataset(Dataset):
         # Get rois df
         if level == 'rois':
             if extract_patches:
-                if self.patch_img_path.exists():
-                    shutil.rmtree(self.patch_img_path)
-                    self.patch_img_path.mkdir(exist_ok=True, parents=True)
-                if self.patch_mask_path.exists():
-                    shutil.rmtree(self.patch_mask_path)
-                    self.patch_mask_path.mkdir(exist_ok=True, parents=True)
+                if delete_previous:
+                    if self.patch_img_path.exists():
+                        shutil.rmtree(self.patch_img_path)
+                        self.patch_img_path.mkdir(exist_ok=True, parents=True)
+                    if self.patch_mask_path.exists():
+                        shutil.rmtree(self.patch_mask_path)
+                        self.patch_mask_path.mkdir(exist_ok=True, parents=True)
 
                 self.patch_size = patch_size
                 self.min_breast_frac = min_breast_fraction_roi
@@ -654,7 +654,7 @@ class INBreast_Dataset(Dataset):
             center_column_name = 'center_crop' if self.cropped_imgs else 'center'
             center = roi[center_column_name]
             if isinstance(center, str):
-                roi_center = utils.load_point(center, 'int')
+                roi_center = utils.load_point(center)
             else:
                 roi_center = center
 
@@ -724,122 +724,6 @@ class INBreast_Dataset(Dataset):
         img_ids_with_rois = self.rois_df.img_id.unique()
         return [img_id for img_id in self.img_df.img_id.unique() if img_id not in img_ids_with_rois]
 
-    def __len__(self):
-        return len(self.labels)
-
-    def __getitem__(self, idx):
-        sample = {}
-        sample["idx"] = idx
-        sample["lab"] = self.labels[idx]
-
-        # Read image png
-        if self.level == 'image':
-            filename = Path(self.df['filename'].iloc[idx]).name
-            img_path = self.full_img_path / filename
-            img = cv2.imread(str(img_path), cv2.IMREAD_ANYDEPTH)
-        else:
-            img_path = self.patch_img_path / self.df['filename'].iloc[idx]
-            img = cv2.imread(str(img_path), cv2.IMREAD_ANYDEPTH)
-
-        # Convert all images in left oriented ones
-        side = self.df['side'].iloc[idx]
-        img_id = self.df['img_id'].iloc[idx]
-        sample['img_id'] = img_id
-        if side == 'R' and self.level == 'image':
-            img = cv2.flip(img, 1)
-        sample['img'] = img
-
-        # Return bboxes coords for det CNNs and metrics
-        if self.level == 'image':
-            rois_from_img = \
-                (self.rois_df.img_id == img_id) & (self.rois_df.lesion_type != 'ignored_lesion')
-            lesion_tag = 'lesion_bbox_crop' if self.cropped_imgs else 'lesion_bbox'
-            bboxes_coords = self.rois_df.loc[rois_from_img, lesion_tag].values
-            sample["lesion_bboxes"] = [
-                utils.load_coords(bbox) if isinstance(bbox, str)
-                else bbox for bbox in bboxes_coords
-            ]
-            sample['radiuses'] = self.rois_df.loc[rois_from_img, 'radius'].values
-            if self.ignore_diameter_px is not None:
-                ignored_rois_from_img = \
-                    (self.rois_df.img_id == img_id) & (self.rois_df.lesion_type == 'ignored_lesion')
-                bboxes_coords = self.rois_df.loc[ignored_rois_from_img, lesion_tag].values
-                sample["ignored_lesion_bboxes"] = [
-                    utils.load_coords(bbox) if isinstance(bbox, str)
-                    else bbox for bbox in bboxes_coords
-                ]
-                sample['ignored_lesion_radiuses'] = self.rois_df.loc[
-                    ignored_rois_from_img, 'radius'].values
-        else:
-            sample["patch_bbox"] = [self.df['patch_bbox'].iloc[idx]]
-
-        # Load lesion mask
-        if self.lesions_mask:
-            if self.level == 'image':
-                mask_path = \
-                    self.full_mask_path / f'{self.df["img_id"].iloc[idx]}_lesion_mask.png'
-                if not mask_path.exists():
-                    mask = np.zeros(img.shape)
-                else:
-                    mask = cv2.imread(str(mask_path), cv2.IMREAD_ANYDEPTH)
-                    mask = mask.astype(np.int16)
-                    mask = self.adjust_mask_to_selected_lesions(mask, idx)
-                    if side == 'R':
-                        mask = cv2.flip(mask, 1)
-            else:
-                mask_filename = self.df['mask_filename'].iloc[idx]
-                if mask_filename != 'empty_mask':
-                    mask_filename = self.patch_mask_path / mask_filename
-                    mask = cv2.imread(str(mask_filename), cv2.IMREAD_ANYDEPTH)
-                    sample["lesion_bboxes"] = utils.get_bbox_of_lesions_in_patch(mask)
-                    sample["ignored_lesion_bboxes"] = utils.get_bbox_of_lesions_in_patch(
-                        mask, ignored_lesions=True)
-                else:
-                    mask = np.zeros(img.shape)
-                    sample["lesion_bboxes"] = []
-
-            # Consider the cases with lesions inside lesions
-            holes = mask.astype('float32').copy()
-            cv2.floodFill(holes, None, (0, 0), newVal=1)
-            holes = np.where(holes == 0, 255, 0)
-            sample['lesion_mask'] = mask + holes.astype('uint8')
-
-        if self.use_muscle_mask:
-            if self.level == 'image':
-                muscle_mask_path = self.full_muscle_mask_path / \
-                    f'{self.df["img_id"].iloc[idx]}_pectoral_muscle_mask.png'
-                if not muscle_mask_path.exists():
-                    muscle_mask = np.zeros(img.shape)
-                else:
-                    muscle_mask = cv2.imread(str(muscle_mask_path), cv2.IMREAD_GRAYSCALE)
-                    if side == 'R':
-                        muscle_mask = cv2.flip(muscle_mask, 1)
-                sample['muscle_mask'] = muscle_mask
-
-        # Apply transformations
-        # Warning: normalization should be indicated as a Transformation
-        if self.transform is not None:
-            transform_seed = np.random.randint(self.seed)
-            random.seed(transform_seed)
-            sample["img"] = self.transform(sample["img"])
-            # TODO: Check interpolation method when this is used
-            if self.lesions_mask:
-                random.seed(transform_seed)
-                sample["lesion_mask"] = self.transform(sample["lesion_mask"])
-
-        # Apply data augmentations
-        if self.data_aug is not None:
-            transform_seed = np.random.randint(self.seed)
-            random.seed(transform_seed)
-            sample["img"] = self.data_aug(sample["img"])
-            # TODO: Check interpolation method when this is used
-            if self.lesion_mask:
-                for i in sample["lesion_mask"].keys():
-                    random.seed(transform_seed)
-                    sample["lesion_mask"] = self.data_aug(sample["lesion_mask"])
-        sample['side'] = side
-        return sample
-
     def adjust_mask_to_selected_lesions(self, mask: np.ndarray, idx: int):
         """
         Keeps just the lesions remaining after different filterings
@@ -888,8 +772,7 @@ class INBreast_Dataset(Dataset):
                 breast_bbox = self.img_df.loc[self.img_df.img_id == img_id, 'breast_bbox'].values[0]
                 if isinstance(breast_bbox, str):
                     breast_bbox = utils.load_coords(
-                        self.img_df.loc[self.img_df.img_id == img_id, 'breast_bbox'].values[0],
-                        dtype=int
+                        self.img_df.loc[self.img_df.img_id == img_id, 'breast_bbox'].values[0]
                     )
                 breast_bbox_shape = (
                     breast_bbox[1][0] - breast_bbox[0][0],
@@ -903,7 +786,7 @@ class INBreast_Dataset(Dataset):
 
             centers = self.rois_df.loc[self.rois_df.img_id == img_id, center_tag].tolist()
             if isinstance(centers[0], str):
-                centers = [np.array(utils.load_point(point, 'int')) for point in centers]
+                centers = [np.array(utils.load_point(point)) for point in centers]
             else:
                 centers = [np.array(point) for point in centers]
             for k, center in enumerate(centers):
@@ -914,7 +797,7 @@ class INBreast_Dataset(Dataset):
                 self.rois_df.loc[self.rois_df.img_id == img_id, lesion_tag].tolist()
             for k, lesion_bbox_crop in enumerate(lesion_bboxs_crop):
                 if isinstance(lesion_bbox_crop, str):
-                    lesion_bbox_crop = utils.load_coords(lesion_bbox_crop, 'int')
+                    lesion_bbox_crop = utils.load_coords(lesion_bbox_crop)
                 lesion_bbox_crop = [
                     (breast_bbox_shape[0] - point[0], point[1]) for point in lesion_bbox_crop
                 ]
@@ -926,13 +809,110 @@ class INBreast_Dataset(Dataset):
             point_pxs_crop = self.rois_df.loc[self.rois_df.img_id == img_id, poit_tag].values
             for k, point_px_crop in enumerate(point_pxs_crop):
                 if isinstance(point_px_crop, str):
-                    point_px_crop = utils.load_coords(point_px_crop, 'int')
+                    point_px_crop = utils.load_coords(point_px_crop)
                 point_pxs_crop[k] = [
                     (breast_bbox_shape[0] - point[0], point[1]) for point in point_px_crop
                 ]
 
-            # print(point_pxs_crop)
             for k, row in enumerate(self.rois_df.loc[self.rois_df.img_id == img_id].iterrows()):
                 self.rois_df.at[row[0], center_tag] = centers[k]
                 self.rois_df.at[row[0], lesion_tag] = lesion_bboxs_crop[k]
                 self.rois_df.at[row[0], poit_tag] = point_pxs_crop[k]
+
+    def __len__(self):
+        return len(self.labels)
+
+    def __getitem__(self, idx):
+        sample = {}
+        sample["idx"] = idx
+        sample["lab"] = self.labels[idx]
+
+        # Read image png
+        if self.level == 'image':
+            filename = Path(self.df['filename'].iloc[idx]).name
+            img_path = self.full_img_path / filename
+            img = cv2.imread(str(img_path), cv2.IMREAD_ANYDEPTH)
+        else:
+            img_path = self.patch_img_path / self.df['filename'].iloc[idx]
+            img = cv2.imread(str(img_path), cv2.IMREAD_ANYDEPTH)
+
+        # Convert all images in left oriented ones
+        side = self.df['side'].iloc[idx]
+        img_id = self.df['img_id'].iloc[idx]
+        sample['img_id'] = img_id
+        if side == 'R' and self.level == 'image':
+            img = cv2.flip(img, 1)
+        sample['img'] = img
+
+        # Return bboxes coords for det CNNs and metrics
+        if self.level == 'image':
+            rois_from_img = \
+                (self.rois_df.img_id == img_id) & (self.rois_df.lesion_type != 'ignored_lesion')
+            lesion_tag = 'lesion_bbox_crop' if self.cropped_imgs else 'lesion_bbox'
+            bboxes_coords = self.rois_df.loc[rois_from_img, lesion_tag].values
+            sample["lesion_bboxes"] = [
+                utils.load_coords(bbox) if isinstance(bbox, str)
+                else bbox for bbox in bboxes_coords
+            ]
+            sample['radiuses'] = self.rois_df.loc[rois_from_img, 'radius'].values
+            if self.ignore_diameter_px is not None:
+                ignored_rois_from_img = \
+                    (self.rois_df.img_id == img_id) & (self.rois_df.lesion_type == 'ignored_lesion')
+                bboxes_coords = self.rois_df.loc[ignored_rois_from_img, lesion_tag].values
+                sample["ignored_lesion_bboxes"] = [
+                    utils.load_coords(bbox) if isinstance(bbox, str)
+                    else bbox for bbox in bboxes_coords
+                ]
+                sample['ignored_lesion_radiuses'] = self.rois_df.loc[
+                    ignored_rois_from_img, 'radius'].values
+        else:
+            patch_bbox = self.df['patch_bbox'].iloc[idx]
+            if isinstance(patch_bbox, str):
+                patch_bbox = utils.load_patch_coords(patch_bbox)
+            sample["patch_bbox"] = patch_bbox
+
+        # Load lesion mask
+        if self.lesions_mask:
+            if self.level == 'image':
+                mask_path = \
+                    self.full_mask_path / f'{self.df["img_id"].iloc[idx]}_lesion_mask.png'
+                if not mask_path.exists():
+                    mask = np.zeros(img.shape)
+                else:
+                    mask = cv2.imread(str(mask_path), cv2.IMREAD_ANYDEPTH)
+                    mask = mask.astype(np.int16)
+                    mask = self.adjust_mask_to_selected_lesions(mask, idx)
+                    if side == 'R':
+                        mask = cv2.flip(mask, 1)
+            else:
+                mask_filename = self.df['mask_filename'].iloc[idx]
+                if mask_filename != 'empty_mask':
+                    mask_filename = self.patch_mask_path / mask_filename
+                    mask = cv2.imread(str(mask_filename), cv2.IMREAD_ANYDEPTH)
+                    sample["lesion_bboxes"] = utils.get_bbox_of_lesions_in_patch(mask)
+                    sample["ignored_lesion_bboxes"] = utils.get_bbox_of_lesions_in_patch(
+                        mask, ignored_lesions=True)
+                else:
+                    mask = np.zeros(img.shape)
+                    sample["lesion_bboxes"] = []
+
+            # Consider the cases with lesions inside lesions
+            holes = mask.astype('float32').copy()
+            cv2.floodFill(holes, None, (0, 0), newVal=1)
+            holes = np.where(holes == 0, 255, 0)
+            sample['lesion_mask'] = mask + holes.astype('uint8')
+
+        if self.use_muscle_mask:
+            if self.level == 'image':
+                muscle_mask_path = self.full_muscle_mask_path / \
+                    f'{self.df["img_id"].iloc[idx]}_pectoral_muscle_mask.png'
+                if not muscle_mask_path.exists():
+                    muscle_mask = np.zeros(img.shape)
+                else:
+                    muscle_mask = cv2.imread(str(muscle_mask_path), cv2.IMREAD_GRAYSCALE)
+                    if side == 'R':
+                        muscle_mask = cv2.flip(muscle_mask, 1)
+                sample['muscle_mask'] = muscle_mask
+
+        sample['side'] = side
+        return sample
