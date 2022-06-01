@@ -8,15 +8,27 @@ from skimage.measure import label
 logging.basicConfig(level=logging.INFO)
 
 
-def load_point(point_string: str, dtype: str = 'float'):
+def load_point(point_string: str):
     return tuple(
         [int(num) for num in point_string.strip('()').split(', ')]
     )
 
 
-def load_coords(point_string: str, dtype: str = 'float'):
+def load_coords(point_string: str):
     return tuple(
-        [load_point(num, 'int') for num in point_string.strip('[]').split('), (')]
+        [load_point(num) for num in point_string.strip('[]').split('), (')]
+    )
+
+
+def load_patch_point(point_string: str):
+    return tuple(
+        [int(num) for num in point_string.strip('[]').split(' ') if num != '']
+    )
+
+
+def load_patch_coords(point_string: str):
+    return tuple(
+        [load_patch_point(num) for num in point_string.strip('[]').split(']\n [')]
     )
 
 
