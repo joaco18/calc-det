@@ -54,7 +54,7 @@ class INBreast_Dataset_pytorch(INBreast_Dataset):
             n_to_sample = n_neg
         self.df = pd.concat([
             self.df.loc[self.df.label == 'abnormal', :],
-            self.df.loc[self.df.label == 'abnormal', :].sample(
+            self.df.loc[self.df.label == 'normal', :].sample(
                 n=n_to_sample, replace=False, random_state=self.balancing_seed
             )
         ], ignore_index=True)
