@@ -17,7 +17,6 @@ import pandas as pd
 
 from pathlib import Path
 from roi_extraction import slice_image, padd_image, view_as_windows
-# from torchvision import transforms
 from typing import List, Tuple
 from tqdm import tqdm
 
@@ -71,8 +70,6 @@ class INBreast_Dataset(Dataset):
         views: List[str] = ["*"],
         lesion_types: List[str] = ['calcification', 'cluster'],
         keep_just_images_of_lesion_type: List[str] = False,
-        transform: List[str] = None,
-        data_aug: List[str] = None,
         seed: int = 0,
         return_lesions_mask: bool = False,
         level: str = 'image',
@@ -84,7 +81,6 @@ class INBreast_Dataset(Dataset):
         patch_size: int = 12,
         stride: Tuple[int] = 1,
         min_breast_fraction_roi: float = 0.,
-        normalize: str = None,
         n_jobs: int = -1,
         cropped_imgs: bool = True,
         use_muscle_mask: bool = False,
@@ -108,9 +104,6 @@ class INBreast_Dataset(Dataset):
                 lesions included in lesion types will be retained. Defaults to False, which
                 means all images are retained and then just the rois of 'lesion_types' are
                 retained.
-            transform (List[str], optional): List of transformations. Defaults to None.
-            data_aug (List[str], optional): List of data augmentation procedures.
-                Defaults to None.
             seed (int, optional): Seed to gurantee reproducibility. Defaults to 0.
             return_lesions_mask (bool, optional): Whether to return the lesion mask for each
                 example or not. Defaults to False.
@@ -131,7 +124,6 @@ class INBreast_Dataset(Dataset):
             min_breast_fraction_roi (float, optional): Minimum percentage of breast to consider
                 the roi as a valid example. If muscle masks are used, this same criteria will
                 apply to the region of muscle. Defaults to 0.
-            normalize (str, optional): ['min]. Defaults to None.
             n_jobs (int, optional): Number of processes to use in parallel operations.
                 Defaults to -1
             cropped_imgs (bool): whether the images to read has the breast region cropped.
@@ -172,10 +164,7 @@ class INBreast_Dataset(Dataset):
         self.level = level
         self.views = views
         self.partitions = partitions
-        self.transform = transform
-        self.data_aug = data_aug
         self.lesions_mask = return_lesions_mask
-        self.normalize = normalize
         self.lesion_types = lesion_types
         self.keep_just_images_of_lesion_type = keep_just_images_of_lesion_type
         self.max_lesion_diam_px = \
@@ -245,8 +234,7 @@ class INBreast_Dataset(Dataset):
 
     def string(self):
         return \
-            f'{self.__class__.__name__ } num_samples={len(self)} \
-                views={self.views} data_aug={self.data_aug}'
+            f'{self.__class__.__name__ } num_samples={len(self)} views={self.views}'
 
     def limit_to_selected_views(self):
         """
@@ -511,10 +499,7 @@ class INBreast_Dataset(Dataset):
                 continue
             roi_name = f'{img_id}_roi_{roi_idx}.png'
             patch_filenames.append(f'{img_id}/{roi_name}')
-            if self.normalize == 'min_max':
-                temp = utils.min_max_norm(image_patches[roi_idx, :, :], 255)
-            else:
-                temp = image_patches[roi_idx, :, :]
+            temp = image_patches[roi_idx, :, :]
             (self.patch_img_path/str(img_id)).mkdir(parents=True, exist_ok=True)
             cv2.imwrite(str(self.patch_img_path/str(img_id)/roi_name), temp)
 
@@ -684,8 +669,6 @@ class INBreast_Dataset(Dataset):
                 continue
 
             # Save patches and masks
-            if self.normalize == 'min_max':
-                image_patch = utils.min_max_norm(image_patch, 255).astype('uint8')
             patch_filename = f'{img_id}_les_patch_{k}.png'
             (self.patch_img_path/str(img_id)).mkdir(parents=True, exist_ok=True)
             cv2.imwrite(str(self.patch_img_path/str(img_id)/patch_filename), image_patch)
