@@ -64,7 +64,7 @@ class INBreast_Dataset_pytorch(INBreast_Dataset):
 
     def __getitem__(self, idx):
         sample = {}
-        sample["label"] = self.labels[idx]
+        sample["label"] = 1 if self.labels[idx] == 'abnormal' else 0
 
         img_path = self.patch_img_path / self.df['filename'].iloc[idx]
         img = cv2.imread(str(img_path), cv2.IMREAD_ANYDEPTH)
