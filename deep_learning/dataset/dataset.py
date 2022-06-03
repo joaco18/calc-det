@@ -17,6 +17,7 @@ class INBreast_Dataset_pytorch(INBreast_Dataset):
     def __init__(
         self, imgpath: Path = datapath/'AllPNGs',
         mask_path: Path = datapath/'AllMasks',
+        patch_images_path: Path = None,
         dfpath: Path = datapath,
         lesion_types: List[str] = ['calcification', 'cluster'],
         seed: int = 0,
@@ -43,21 +44,29 @@ class INBreast_Dataset_pytorch(INBreast_Dataset):
         )
         self.neg_to_pos_ratio = neg_to_pos_ratio
         self.balancing_seed = balancing_seed
-        if neg_to_pos_ratio is not None:
-            self.balance_dataset()
+        self.total_df = self.df.copy()
 
-    def balance_dataset(self):
-        n_pos = self.df.loc[self.df.label == 'abnormal', :].shape[0]
-        n_neg = len(self.df) - n_pos
+        if patch_images_path is not None:
+            self.patch_img_path = patch_images_path/'patches'
+            self.patch_mask_path = patch_images_path/'patches_masks'
+
+    def balance_dataset(self, balancing_seed: int = None):
+        n_pos = self.total_df.loc[self.df.label == 'abnormal', :].shape[0]
+        n_neg = len(self.total_df) - n_pos
         n_to_sample = n_pos * self.neg_to_pos_ratio
         if n_to_sample > n_neg:
             n_to_sample = n_neg
+        if balancing_seed is None:
+            balancing_seed = self.balancing_seed
         self.df = pd.concat([
-            self.df.loc[self.df.label == 'abnormal', :],
-            self.df.loc[self.df.label == 'normal', :].sample(
-                n=n_to_sample, replace=False, random_state=self.balancing_seed
+            self.total_df.loc[self.total_df.label == 'abnormal', :],
+            self.total_df.loc[self.total_df.label == 'normal', :].sample(
+                n=n_to_sample, replace=False, random_state=balancing_seed
             )
         ], ignore_index=True)
+
+    def update_sample_used(self, balancing_seed: int = None):
+        self.balance_dataset(balancing_seed)
 
     def __len__(self):
         return len(self.df)
