@@ -114,8 +114,8 @@ class INBreast_Dataset(Dataset):
             max_lesion_diam_mm (float): Maximum horizontal or vertical diameter allowed for the
                 lesion. If None, no filtring is applied
             extract_patches (bool, optional): Whether to extract the rois or not. Defaults to True.
-            delete_previous (bool, optional): Whether to remove preexisting files before extracting crops.
-                Defaults to True
+            delete_previous (bool, optional): Whether to remove preexisting files before extracting
+                crops. Defaults to True
             extract_patches_method (str, optional): Which method to use in the rois extraction.
                 One of ['all', 'centered']. Defaults to 'all'.
             patch_size (int): size of the roi in pixels. Only used if rois are extracted.
@@ -209,7 +209,6 @@ class INBreast_Dataset(Dataset):
                 self.stride = stride
                 if extract_patches_method == 'all':
                     self.patches_df = self.all_patches_extraction()
-                    self.patches_df.to_csv(str(dfpath/'complete_rois_metadata.csv'))
                 else:
                     if self.max_lesion_diam_px is not None:
                         assert self.patch_size >= self.max_lesion_diam_px, \
@@ -222,11 +221,19 @@ class INBreast_Dataset(Dataset):
                         f' \'all\' extraction method.'
 
                     self.patches_df = self.centered_patches_extraction()
-                    self.patches_df.to_csv(str(dfpath/'complete_rois_metadata.csv'))
+                for partition in self.partitions:
+                    self.patches_df.loc[self.patches_df.partition == partition].to_csv(
+                        str(dfpath/f'complete_rois_metadata_{partition}.csv'))
             else:
-                self.patches_df = pd.read_csv(
-                    str(dfpath/'complete_rois_metadata.csv'), index_col=0
-                )
+                patches_df = []
+                for partition in self.partitions:
+                    csv_path = dfpath / f'complete_rois_metadata_{partition}.csv'
+                    assert (csv_path).exists(), \
+                        f'file {csv_path} doesn\'t exist, change ' \
+                        f'\'extract_patches\' to True and run again'
+                    patches_df.append(pd.read_csv(
+                        str(dfpath/f'complete_rois_metadata_{partition}.csv'), index_col=0))
+                self.patches_df = pd.concat(patches_df, ignore_index=True)
 
         # Get our classes.
         self.df = self.img_df if level == 'image' else self.patches_df
@@ -376,6 +383,7 @@ class INBreast_Dataset(Dataset):
         img_path = self.full_img_path / filename
         image = cv2.imread(str(img_path), cv2.IMREAD_ANYDEPTH)
         img_id = self.img_df['img_id'].iloc[idx]
+        partition = self.img_df['partition'].iloc[idx]
         mask_path = self.full_mask_path / f'{img_id}_lesion_mask.png'
         if mask_path.exists():
             mask = cv2.imread(str(mask_path), cv2.IMREAD_GRAYSCALE)
@@ -514,6 +522,7 @@ class INBreast_Dataset(Dataset):
 
         # complete dataframe
         patches_descr['filename'] = patch_filenames
+        patches_descr['partition'] = partition
         patches_descr['mask_filename'] = patch_mask_filenames
         for column in ['case_id', 'img_id', 'side', 'view', 'acr', 'birads']:
             patches_descr[column] = self.img_df[column].iloc[idx]
@@ -576,7 +585,7 @@ class INBreast_Dataset(Dataset):
             (pd.DataFrame): patches_descr describing each ROI.
         """
         # Get the columns of the returned df
-        columns_of_interest = ['case_id', 'img_id', 'side', 'view', 'acr', 'birads']
+        columns_of_interest = ['case_id', 'img_id', 'side', 'view', 'acr', 'birads', 'partition']
         column_names = [lt for lt in LESION_TYPES if lt != 'normal'] + \
             ['breast_fraction', 'patch_bbox', 'filename', 'mask_filename'] + \
             columns_of_interest + ['label']
