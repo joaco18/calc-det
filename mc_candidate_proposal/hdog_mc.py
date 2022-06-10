@@ -8,14 +8,13 @@ import math
 
 import numpy as np
 import skimage.feature as skift
-import scipy.ndimage as ndi
 
 from itertools import combinations_with_replacement
 from skimage.util.dtype import img_as_float
 from pathlib import Path
 from scipy import spatial
 from metrics.metrics_utils import compare_and_filter_pairs
-from general_utils.utils import min_max_norm
+from general_utils.utils import min_max_norm, peak_local_max
 from mc_candidate_proposal.candidate_utils import filter_dets_from_muscle_region
 
 
@@ -164,7 +163,7 @@ class HDoGCalcificationDetection:
             assert muscle_mask is not None, \
                 'If filtering of muscle region is required the muscle region mask should'\
                 ' be provided'
-        
+
         image = min_max_norm(image, 1)
 
         self.use_preprocessed = use_preprocessed
@@ -344,8 +343,8 @@ class HDoGCalcificationDetection:
                 (y, x, sigma) = (row, col, sigma)
         """
         # Get the local maximum
-        local_maxima = \
-            self.peak_local_max(dog_cube, threshold_abs=self.dog_blob_th)
+        local_maxima = peak_local_max(
+            dog_cube, footprint=np.ones((3, 3, 3)), threshold_abs=self.dog_blob_th)
 
         # Catch no peaks
         if local_maxima.size == 0:
@@ -355,78 +354,6 @@ class HDoGCalcificationDetection:
         local_maxima = local_maxima.astype(np.float64)
         local_maxima[:, -1] = self.sigma_array[local_maxima[:, -1].astype('int')]
         return local_maxima
-
-    def peak_local_max(
-        self, image: np.ndarray, threshold_abs: float, min_distance: int = 1,
-        threshold_rel: float = None, num_peaks: int = np.inf, p_norm: int = np.inf
-    ):
-        """Finds peaks in an image as coordinate list.
-        If both `threshold_abs` and `threshold_rel` are provided, the maximum
-        of the two is chosen as the minimum intensity threshold of peaks.
-        Based on skimage's function, but modified to be more efficient
-        Args:
-            image (np.ndarray): 3d image where local peaks are searched
-            min_distance (int, optional): minimum distance between peaks.
-                Defaults to 1.
-            threshold_abs (float, optional): Minimum intensity of peaks.
-            threshold_rel (float, optional): Minimum intensity of peaks,
-                calculated as `max(image) * threshold_rel`. Defaults to None.
-            num_peaks (int, optional): Maximum number of peaks. When the
-                number of peaks exceeds `num_peaks`, return `num_peaks` peaks
-                based on highest peak intensity. Defaults to np.inf.
-            p_norm (int, optional): Which Minkowski p-norm to use to get the
-                distance between peaks. Should be in the range [1, inf].
-                Defaults to np.inf.
-        Returns:
-            (np.ndarray): (row, column, ...) coordinates of peaks.
-        """
-        threshold = threshold_abs
-        if threshold_rel is not None:
-            threshold = max(threshold, threshold_rel * image.max())
-        footprint = np.ones((3, 3, 3))
-
-        # Non maximum filter
-        mask = self.get_peak_mask(image, footprint, threshold)
-
-        # TODO: Check if we can delete it
-        # Select highest intensities (num_peaks)
-        coordinates = self.get_high_intensity_peaks(
-            image, mask, num_peaks, min_distance, p_norm)
-
-        return coordinates
-
-    @staticmethod
-    def get_peak_mask(image, footprint, threshold):
-        """
-        Return the mask containing all peak candidates above thresholds.
-        """
-        image_max = ndi.maximum_filter(
-            image, footprint=footprint, mode='constant')
-        out = image == image_max
-        # no peak for a trivial image
-        image_is_trivial = np.all(out)
-        if image_is_trivial:
-            out[:] = False
-        out &= image > threshold
-        return out
-
-    @staticmethod
-    def get_high_intensity_peaks(
-        image: np.ndarray, mask, num_peaks, min_distance, p_norm
-    ):
-        """
-        Return the highest intensity peak coordinates and check the
-        minimum distance between peaks
-        """
-        # Get coordinates of peaks
-        coord = np.nonzero(mask)
-        intensities = image[coord]
-        # Sort peaks descending order
-        idx_maxsort = np.argsort(-intensities)
-        coord = np.transpose(coord)[idx_maxsort]
-        if len(coord) > num_peaks:
-            coord = coord[:num_peaks]
-        return coord
 
     def store_detections(self, raw_detections):
         """Stores raw detections for futher use

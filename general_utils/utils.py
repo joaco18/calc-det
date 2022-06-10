@@ -1,6 +1,9 @@
 import cv2
 import numpy as np
 import logging
+
+import scipy.ndimage as ndi
+
 from numba import njit
 from itertools import zip_longest
 from skimage.measure import label
@@ -70,10 +73,7 @@ def sobel_gradient(img):
 
 
 @njit(cache=True)
-def patch_coordinates_from_center(
-    center: tuple, image_shape: tuple, patch_size: int, use_padding: bool = True,
-    image: np.ndarray = None, mask: np.ndarray = None
-):
+def patch_coordinates_from_center(center: tuple, image_shape: tuple, patch_size: int):
     """Returns coordinates of the patch, cropping the image at center location
     with a given patch size. If the center is in the left or upper border shift
     the center and crop fixed size patch.
@@ -199,25 +199,6 @@ def get_center_bboxes(bboxes: np.ndarray):
     return np.asarray([get_center_bbox(bbox[0], bbox[1]) for bbox in bboxes])
 
 
-def crop_patch_around_center(patch_x1, patch_x2, patch_y1, patch_y2, center_crop_size):
-    """Calculates coordinates of the crop around center of the given patch of given size.
-
-    Args:
-        patch_x1 (int): patch coordinate
-        center_crop_size (int): size of the croppes patch
-
-    Returns:
-        tuple: center_px1, center_px2, center_py1, center_py2
-    """
-    p_center_y = patch_y1 + (patch_y2 - patch_y1)//2
-    p_center_x = patch_x1 + (patch_x2 - patch_x1)//2
-    center_py1 = p_center_y - center_crop_size//2
-    center_py2 = p_center_y + center_crop_size//2 + center_crop_size % 2
-    center_px1 = p_center_x - center_crop_size//2
-    center_px2 = p_center_x + center_crop_size//2 + center_crop_size % 2
-    return center_px1, center_px2, center_py1, center_py2
-
-
 @njit(cache=True)
 def img_to_patches_array(image: np.ndarray, candidates: np.ndarray, patch_size: int):
     """Crop the fix size patches arround the detections and stack them in an array
@@ -272,3 +253,68 @@ def get_bbox_of_lesions_in_patch(mask: np.ndarray, ignored_lesions: bool = False
         br = (x.max(), y.max())
         lesion_bboxes.append((tl, br))
     return lesion_bboxes
+
+
+def peak_local_max(
+    image: np.ndarray, footprint: np.ndarray, threshold_abs: float, threshold_rel: float = None,
+    num_peaks: int = np.inf, additional_mask: np.ndarray = None
+):
+    """Finds peaks in an image as coordinate list.
+    If both `threshold_abs` and `threshold_rel` are provided, the maximum
+    of the two is chosen as the minimum intensity threshold of peaks.
+    Based on skimage's function, but modified to be more efficient
+    Args:
+        image (np.ndarray): 3d image where local peaks are searched
+        threshold_abs (float, optional): Minimum intensity of peaks.
+        threshold_rel (float, optional): Minimum intensity of peaks,
+            calculated as `max(image) * threshold_rel`. Defaults to None.
+        num_peaks (int, optional): Maximum number of peaks. When the
+            number of peaks exceeds `num_peaks`, return `num_peaks` peaks
+            based on highest peak intensity. Defaults to np.inf.
+        additional_mask (np.ndarray): Mask to filter the peaks,
+            where the mask is zero the peaks are ignored.
+    Returns:
+        (np.ndarray): (row, column, ...) coordinates of peaks.
+    """
+    threshold = threshold_abs
+    if threshold_rel is not None:
+        threshold = max(threshold, threshold_rel * image.max())
+
+    # Non maximum filter
+    mask = get_peak_mask(image, footprint, threshold)
+    if additional_mask is not None:
+        mask = mask * np.where(additional_mask != 0, 1, 0)
+    coordinates = get_high_intensity_peaks(
+        image, mask, num_peaks)
+
+    return coordinates
+
+
+def get_peak_mask(image, footprint, threshold):
+    """
+    Return the mask containing all peak candidates above thresholds.
+    """
+    image_max = ndi.maximum_filter(
+        image, footprint=footprint, mode='constant')
+    out = image == image_max
+    # no peak for a trivial image
+    image_is_trivial = np.all(out)
+    if image_is_trivial:
+        out[:] = False
+    out &= image > threshold
+    return out
+
+
+def get_high_intensity_peaks(image: np.ndarray, mask, num_peaks):
+    """
+    Return the highest intensity peak coordinates
+    """
+    # Get coordinates of peaks
+    coord = np.nonzero(mask)
+    intensities = image[coord]
+    # Sort peaks descending order
+    idx_maxsort = np.argsort(-intensities)
+    coord = np.transpose(coord)[idx_maxsort]
+    if len(coord) > num_peaks:
+        coord = coord[:num_peaks]
+    return coord
