@@ -158,7 +158,7 @@ def plot_gabor_filters(filters, plots_columns=3):
 
 def plot_froc(
     fpis: np.ndarray, tprs: np.ndarray, total_mC: int = None,
-    label: str = '', ax: int = None, title: str = None, cut_on_50fpi: bool=True
+    label: str = '', ax: int = None, title: str = None, cut_on_50fpi: bool = True
 ):
     """Plot FROC curve
     Args:
@@ -294,3 +294,35 @@ def draw_our_haar_like_features(
     mask = mask.astype('uint8')
     image = cv2.addWeighted(image, (1-alpha), mask, alpha, 0.0)
     return image
+
+
+def plot_detections(detections: np.ndarray, image: np.ndarray, k=10):
+    """Draws red a rectangle (increased in k pixels on each side) on each
+    detection, also writes the corresponding score.
+    Args:
+        detections (np.ndarray): _description_
+        image (np.ndarray): _description_
+        k (int, optional): _description_. Defaults to 10.
+    """
+    image = utils.min_max_norm(image, 255).astype('uint8')
+    image = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
+    for [x1, x2, y1, y2, score] in detections:
+        if x1 >= k:
+            x1 = x1 - k
+        if y1 >= k:
+            y1 = y1 - k
+        if x2+k <= image.shape[1]:
+            x2 = x2 + k
+        if y2+k <= image.shape[0]:
+            y2 = y2 + k
+        tl = (int(x1), int(y1))
+        br = (int(x2), int(y2))
+        image = cv2.rectangle(image, tl, br, (255, 0, 0), 2)
+        label = f'{score:.3f}'
+        y = y1 - (k+15) if y1 - (k+15) > (k+15) else y1 + (k+15)
+        image = cv2.putText(
+            image, label, (int(x1), int(y)), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
+    plt.figure(figsize=(15, 15))
+    plt.imshow(image)
+    plt.axis('off')
+    plt.show()
