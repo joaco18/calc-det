@@ -79,7 +79,7 @@ class INBreast_Dataset(Dataset):
         delete_previous: bool = True,
         extract_patches_method: str = 'all',  # 'centered'
         patch_size: int = 12,
-        stride: Tuple[int] = 1,
+        stride: int = 1,
         min_breast_fraction_roi: float = 0.,
         n_jobs: int = -1,
         cropped_imgs: bool = True,
