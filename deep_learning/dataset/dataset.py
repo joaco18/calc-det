@@ -52,7 +52,7 @@ class INBreast_Dataset_pytorch(INBreast_Dataset):
             self.patch_mask_path = patch_images_path/'patches_masks'
 
     def balance_dataset(self, balancing_seed: int = None):
-        n_pos = self.total_df.loc[self.df.label == 'abnormal', :].shape[0]
+        n_pos = self.total_df.loc[self.total_df.label == 'abnormal', :].shape[0]
         n_neg = len(self.total_df) - n_pos
         n_to_sample = n_pos * self.neg_to_pos_ratio
         if n_to_sample > n_neg:
