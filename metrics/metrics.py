@@ -124,8 +124,7 @@ def fp_per_unit_area(image_shape, no_fp):
 
 def froc_curve(
     froc_df: pd.DataFrame, thresholds: np.ndarray = None, cut_on_50fpi: bool = False,
-    non_max_supression: bool = True
-):
+    non_max_supression: bool = True):
     """Using the complete dataset for froc computation containing all the images, obtains the
     Sensitivity and the Average False positives per image at each threshold.
     If thresholds is given then those thresholds are checked if not all posible ones.
@@ -149,32 +148,36 @@ def froc_curve(
     total_n_images = len(froc_df.img_id.unique())
     sensitivities = []
     avgs_fp_per_image = []
+    
+    # FN that are constant (were not even detected by candidate proposal)
+    n_FN = (froc_df.detection_labels == 'FN').sum()
+    
+    forc_df_sorted = froc_df.sort_values(by=['pred_scores'], ascending=False)
+    
+    # total number of detected mC
+    total_detected_mC = (forc_df_sorted.detection_labels == 'TP').sum()
+    
     if thresholds is None:
         thresholds = np.sort(froc_df.pred_scores.unique())[::-1]
-    for th in thresholds:
-        froc_df.loc[froc_df.pred_scores >= th, 'pred_binary'] = True
-        froc_df.loc[froc_df.pred_scores < th, 'pred_binary'] = False
-
-        classif_as_pos = froc_df.pred_binary
-        froc_df.loc[classif_as_pos & (froc_df.detection_labels == 'TP'), 'class_labels'] = 'TP'
-        froc_df.loc[classif_as_pos & (froc_df.detection_labels == 'FP'), 'class_labels'] = 'FP'
-        # This may only occur on th=0
-        froc_df.loc[classif_as_pos & (froc_df.detection_labels == 'FN'), 'class_labels'] = 'FN'
-
-        classif_as_neg = ~froc_df.pred_binary
-        froc_df.loc[classif_as_neg & (froc_df.detection_labels == 'FN'), 'class_labels'] = 'FN'
-        froc_df.loc[classif_as_neg & (froc_df.detection_labels == 'TP'), 'class_labels'] = 'FN'
-        froc_df.loc[classif_as_neg & (froc_df.detection_labels == 'FP'), 'class_labels'] = 'TN'
-
-        n_TP = len(froc_df.loc[froc_df.class_labels == 'TP'])
-        n_FP = len(froc_df.loc[(froc_df.class_labels == 'FP') & (froc_df.is_normal)])
-        n_FN = len(froc_df.loc[froc_df.class_labels == 'FN'])
-
-        sens = n_TP / (n_TP + n_FN)
+        
+    for thr in thresholds:
+        froc_df_slice = forc_df_sorted[forc_df_sorted.pred_scores>=thr]
+        
+        # detected TP in the thresholded slice of predictions
+        n_TP = (froc_df_slice.detection_labels == 'TP').sum()
+        
+        # FP are counted only on normal iamges
+        n_FP = ((froc_df_slice.detection_labels == 'FP') & (froc_df_slice.is_normal)).sum()
+        
+        # FN number which changes based on threshold
+        add_FN = total_detected_mC - n_TP
+        
+        sens = n_TP / (n_TP + n_FN + add_FN)
         avg_nfp_per_image = n_FP / total_n_images
 
         sensitivities.append(sens)
         avgs_fp_per_image.append(avg_nfp_per_image)
+        
         if cut_on_50fpi and (avg_nfp_per_image > 50):
             break
     return sensitivities, avgs_fp_per_image, thresholds
