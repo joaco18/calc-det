@@ -149,7 +149,7 @@ def train_model(datasets, dataloaders, data_transforms, model, criterion, optimi
                 if metrics[best_metric_name] > best_metric:
                     if cfg['training']['early_stopping']:
                         diff = metrics[best_metric_name] - best_metric
-                        if diff > cfg['training']['early_stopping_args']['min_diff']:
+                        if diff < cfg['training']['early_stopping_args']['min_diff']:
                             early_stopping_count += 1
                         else:
                             early_stopping_count = 0
@@ -163,13 +163,13 @@ def train_model(datasets, dataloaders, data_transforms, model, criterion, optimi
                 elif cfg['training']['early_stopping']:
                     early_stopping_count += 1
 
-                if cfg['training']['early_stopping']:
-                    max_epochs = cfg['training']['early_stopping_args']['max_epoch']
-                    if early_stopping_count == max_epochs:
-                        msg = f'Early stopping after {max_epochs} epochs without' \
-                            f' significant change in val metric'
-                        logging.info(msg)
-                        break
+        if cfg['training']['early_stopping']:
+            max_epochs = cfg['training']['early_stopping_args']['max_epoch']
+            if early_stopping_count == max_epochs:
+                msg = f'Early stopping after {max_epochs} epochs without' \
+                    f' significant change in val metric'
+                logging.info(msg)
+                break
         logging.info(('-' * 10))
 
     time_elapsed = time.time() - since
