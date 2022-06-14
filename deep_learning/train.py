@@ -171,7 +171,8 @@ def train_model(datasets, dataloaders, data_transforms, model, criterion, optimi
 
 def main():
     # read the configuration file
-    with open("config.yml", "r") as ymlfile:
+    config_path = thispath.parent/"deep_learning/config.yml"
+    with open(config_path, "r") as ymlfile:
         cfg = yaml.safe_load(ymlfile)
 
     # use the configuration for the dataset
