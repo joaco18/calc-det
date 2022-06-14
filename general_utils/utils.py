@@ -39,8 +39,7 @@ def z_score_norm(img: np.ndarray, mean: float = None, std: float = None):
     if (mean is None) and (std is None):
         mean, std = cv2.meanStdDev(img)
     img = (img - mean) / std
-    # TODO: Decide what to do with the floats
-    return img
+    return img.astype('float32')
 
 
 def min_max_norm(img: np.ndarray, max_val: int = None):
