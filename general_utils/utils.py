@@ -318,3 +318,61 @@ def get_high_intensity_peaks(image: np.ndarray, mask, num_peaks):
     if len(coord) > num_peaks:
         coord = coord[:num_peaks]
     return coord
+
+
+def adjust_gamma_float(image: np.ndarray, gamma: float = 1.0):
+    """
+    Apply gamma adjustment to image in rage [0, 1] float32
+    Args:
+        image (np.ndarray): _description_
+        gamma (float, optional): _description_. Defaults to 1.0.
+
+    Returns:
+        _type_: _description_
+    """
+    max_val = image.max()
+    # build a lookup table mapping the pixel values [0, 255] to
+    # their adjusted gamma values
+    invGamma = 1.0 / gamma
+    if max_val == 1:
+        return image ** invGamma
+    # elif max_val == 255:
+    #     table = [((i / 255.0) ** invGamma) * 255 for i in np.arange(0, 256)]
+    #     table = np.array(table).astype("uint8")
+    #     # apply gamma correction using the lookup table
+    #     return cv2.LUT(image, table)
+    # else:
+    #     logging.warning('Datatype not supported, either float or uint8')
+
+
+def adjust_bbox_to_fit(img_shape: tuple, bbox: tuple, k: int):
+    """Adjust the coordinates of a bbox with extra size k, to fit in the image
+    Args:
+        img_shape (tuple): shape of the image.
+        bbox (tuple): ((x1, y1), (x2, y2))
+        k (int): extra size.
+    Returns:
+        tl (tuple): top left coords (x1, y1)
+        br (tuple): bottom right coords (x2, y2)
+    """
+    ((x1, y1), (x2, y2)) = bbox
+    patch_size = (x2 - x1 + k, y2 - y1 + k)
+    x1 = x1 - k
+    x2 = x2 + k
+    if x1 < 0:
+        x1 = 0
+        x2 = patch_size[0]
+    y1 = y1 - k
+    y2 = y2 + k
+    if y1 < 0:
+        y1 = 0
+        y2 = patch_size[1]
+    if x2 > img_shape[1]:
+        x2 = img_shape[1]
+        x1 = img_shape[1] - patch_size[0]
+    if y2 > img_shape[0]:
+        y2 = img_shape[0]
+        y1 = img_shape[0] - patch_size[1]
+    tl = (int(x1), int(y1))
+    br = (int(x2), int(y2))
+    return tl, br
