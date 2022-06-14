@@ -34,7 +34,8 @@ class INBreast_Dataset_pytorch(INBreast_Dataset):
         ignore_diameter_px: int = 15,
         neg_to_pos_ratio: int = None,
         balancing_seed: int = 0,
-        normalization: str = 'min_max'
+        normalization: str = 'min_max',
+        **extra
     ):
         super(INBreast_Dataset_pytorch, self).__init__(
             imgpath=imgpath, mask_path=mask_path, dfpath=dfpath, lesion_types=lesion_types,
