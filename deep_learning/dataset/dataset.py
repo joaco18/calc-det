@@ -33,7 +33,8 @@ class INBreast_Dataset_pytorch(INBreast_Dataset):
         cropped_imgs: bool = True,
         ignore_diameter_px: int = 15,
         neg_to_pos_ratio: int = None,
-        balancing_seed: int = 0
+        balancing_seed: int = 0,
+        normalization: str = 'min_max'
     ):
         super(INBreast_Dataset_pytorch, self).__init__(
             imgpath=imgpath, mask_path=mask_path, dfpath=dfpath, lesion_types=lesion_types,
@@ -46,6 +47,7 @@ class INBreast_Dataset_pytorch(INBreast_Dataset):
         self.neg_to_pos_ratio = neg_to_pos_ratio
         self.balancing_seed = balancing_seed
         self.total_df = self.df.copy()
+        self.normalization = normalization
 
         if patch_images_path is not None:
             self.patch_img_path = patch_images_path/'patches'
@@ -82,14 +84,18 @@ class INBreast_Dataset_pytorch(INBreast_Dataset):
         side = self.df['side'].iloc[idx]
         if side == 'R' and self.level == 'image':
             img = cv2.flip(img, 1)
+
         # Convert into float for better working of pytorch augmentations
-        img = utils.min_max_norm(img, 1).astype('float32')
+        if self.normalization == 'min_max':
+            img = utils.min_max_norm(img, 1).astype('float32')
+        else:
+            img = utils.z_score_norm(img)
 
         # to RGB
         img = np.expand_dims(img, 0)
         img = np.repeat(img, 3, axis=0)
         sample['img'] = img
-        
+
         patch_bbox = self.df['patch_bbox'].iloc[idx]
         if isinstance(patch_bbox, str):
             patch_bbox = utils.load_patch_coords(patch_bbox)
