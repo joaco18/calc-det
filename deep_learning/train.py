@@ -61,6 +61,7 @@ def train_model(datasets, dataloaders, data_transforms, model, criterion, optimi
     writer = SummaryWriter(log_dir=log_dir)
 
     early_stopping_count = 0
+    previous_metric = 0
 
     for epoch in range(init_epoch, cfg['training']['n_epochs']):
         logging.info(f'Epoch {epoch+1}/{cfg["training"]["n_epochs"]}')
@@ -147,12 +148,6 @@ def train_model(datasets, dataloaders, data_transforms, model, criterion, optimi
 
             if phase == 'val':
                 if metrics[best_metric_name] > best_metric:
-                    if cfg['training']['early_stopping']:
-                        diff = metrics[best_metric_name] - best_metric
-                        if diff < cfg['training']['early_stopping_args']['min_diff']:
-                            early_stopping_count += 1
-                        else:
-                            early_stopping_count = 0
                     best_metric = epoch_f1
                     best_threshold = metrics['threshold']
                     torch.save({
@@ -160,8 +155,14 @@ def train_model(datasets, dataloaders, data_transforms, model, criterion, optimi
                         'metrics': metrics,
                         'configuration': cfg
                         }, best_model_path)
-                elif cfg['training']['early_stopping']:
-                    early_stopping_count += 1
+                
+                if cfg['training']['early_stopping']:
+                    diff = metrics[best_metric_name] - previous_metric
+                    if diff < cfg['training']['early_stopping_args']['min_diff']:
+                        early_stopping_count += 1
+                    else:
+                        early_stopping_count = 0
+                previous_metric = metrics[best_metric_name]
 
         if cfg['training']['early_stopping']:
             max_epochs = cfg['training']['early_stopping_args']['max_epoch']
@@ -232,7 +233,7 @@ def main():
     )
     transforms = T.RandomApply(transforms=transforms, p=cfg['data_aug']['prob'])
     data_transforms = {
-        'train': identity_function if (cfg['data_aug']['prob'] is None) else transforms,
+        'train': identity_function if (cfg['data_aug']['prob'] == 0) else transforms,
         'val': identity_function
     }
 
