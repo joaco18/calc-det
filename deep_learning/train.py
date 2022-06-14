@@ -60,8 +60,10 @@ def train_model(datasets, dataloaders, data_transforms, model, criterion, optimi
     log_dir.mkdir(exist_ok=True, parents=True)
     writer = SummaryWriter(log_dir=log_dir)
 
-    for epoch in range(init_epoch, cfg['num_epochs']):
-        logging.info(f'Epoch {epoch+1}/{cfg["num_epochs"]}')
+    early_stopping_count = 0
+
+    for epoch in range(init_epoch, cfg['training']['n_epochs']):
+        logging.info(f'Epoch {epoch+1}/{cfg["training"]["n_epochs"]}')
         logging.info(('-' * 10))
 
         # resample used negatives to use the large diversity of them that we have
@@ -143,15 +145,32 @@ def train_model(datasets, dataloaders, data_transforms, model, criterion, optimi
                 'optimizer_state_dict': optimizer.state_dict(),
                 'loss': loss}, chkpt_path)
 
-            if phase == 'val' and metrics[best_metric_name] > best_metric:
-                best_metric = epoch_f1
-                best_threshold = metrics['threshold']
-                torch.save({
-                    'model_state_dict': model.state_dict(),
-                    'metrics': metrics,
-                    'configuration': cfg
-                    }, best_model_path)
-        logging.info()
+            if phase == 'val':
+                if metrics[best_metric_name] > best_metric:
+                    if cfg['training']['early_stopping']:
+                        diff = metrics[best_metric_name] - best_metric
+                        if diff > cfg['training']['early_stopping_args']['min_diff']:
+                            early_stopping_count += 1
+                        else:
+                            early_stopping_count = 0
+                    best_metric = epoch_f1
+                    best_threshold = metrics['threshold']
+                    torch.save({
+                        'model_state_dict': model.state_dict(),
+                        'metrics': metrics,
+                        'configuration': cfg
+                        }, best_model_path)
+                elif cfg['training']['early_stopping']:
+                    early_stopping_count += 1
+
+                if cfg['training']['early_stopping']:
+                    max_epochs = cfg['training']['early_stopping_args']['max_epoch']
+                    if early_stopping_count == max_epochs:
+                        msg = f'Early stopping after {max_epochs} epochs without' \
+                            f' significant change in val metric'
+                        logging.info(msg)
+                        break
+        logging.info(('-' * 10))
 
     time_elapsed = time.time() - since
     message = f'Training complete in {(time_elapsed // 60):.0f}m ' \
@@ -235,11 +254,11 @@ def main():
     optimizer = optimizer(model.parameters(), **cfg['training']['optimizer_args'])
 
     scheduler = getattr(lr_scheduler, cfg['training']['lr_scheduler'])
-    optimizer = scheduler(optimizer, **cfg['training']['lr_scheduler_args'])
+    scheduler = scheduler(optimizer, **cfg['training']['lr_scheduler_args'])
 
     # train the model
     train_model(datasets, dataloaders, data_transforms, model, criterion, optimizer, scheduler, cfg)
 
 
-if __name__ == '__main__':
-    main()
+# if __name__ == '__main__':
+    # main()
