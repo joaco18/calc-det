@@ -12,6 +12,7 @@ database/preparing_data.py
 database/Untitled.ipynb
 notebooks/debug_dataset.ipynb
 notebooks/try_dim_red_haar_selection.ipynb
+deep_learning/config.yml
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
