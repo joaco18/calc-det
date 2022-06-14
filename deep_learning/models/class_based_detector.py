@@ -22,6 +22,8 @@ class ClassificationBasedDetector():
         self,
         model,
         threshold: float = 0,
+        pred_kind: str = 'score',
+        norm_kind: str = 'avg',
         post_proc: bool = True,
         patch_size: int = 224,
         stride: int = 25,
@@ -36,8 +38,15 @@ class ClassificationBasedDetector():
         Args:
             model (_type_): Trained classification model from pytorch.
             threshold (float, optional): Threshold to binarize predictions. Defaults to 0.
-            post_proc (bool, optional): Whether to apply the post-processing or not.
-                Defaults to True.
+            pred_kind (str, optional). Which prediction to use.
+                'score': the raw score is used.
+                'binary': the score is binarized with the threshold passed.
+                Defaults to 'score'.
+            norm_kind (str, optional).
+                'avg': get the average of the predictions on the overlapping patches.
+                'normalize': do a min_max_norm over the complete saliency map.
+                Defaults to 'avg'.
+            post_proc (bool, optional): Wether to apply post processing. Defaults to True
             patch_size (int, optional): Size of the input to the network. Defaults to 224.
             stride (int, optional): Stride to use when obtaining patches from the imge.
                 Defaults to 25.
@@ -61,6 +70,8 @@ class ClassificationBasedDetector():
         self.device = device
         self.nms = nms
         self.iou_threshold = iou_threshold
+        self.pred_kind = pred_kind
+        self.norm_kind = norm_kind
 
     def detect(self, img: np.ndarray):
         """Divides the image in patches, runs classification, joints the results and extracts
@@ -88,17 +99,25 @@ class ClassificationBasedDetector():
         for batch in tqdm(crops_dataloader, total=len(crops_dataloader)):
             inputs = batch['img'].to(self.device)
             with torch.set_grad_enabled(False):
-                outputs = np.asarray(torch.sigmoid(self.model(inputs).detach()).flatten().cpu())
+                outputs = torch.sigmoid(self.model(inputs).detach())
+                outputs = np.asarray(outputs.flatten().cpu())
+                # binarize if necessary
+                if self.pred_kind == 'binary':
+                    outputs = np.where(outputs >= self.threshold, 1, 0)
             for k, location in enumerate(batch['location']):
                 [[x1, y1], [x2, y2]] = location
                 counts[y1:y2, x1:x2] += 1
                 self.saliency_map[y1:y2, x1:x2] += outputs[k]
 
         # normalize saliency map
-        self.saliency_map = self.saliency_map/counts
+        if self.norm_kind == 'avg':
+            self.saliency_map = self.saliency_map/counts
+        else:
+            self.saliency_map = utils.min_max_norm(self.saliency_map, 1).astype('float32')
 
         # do post_processing
-        if self.post_proc is not None:
+        if self.post_proc:
+            self.saliency_map_adj = utils.adjust_gamma_float(self.saliency_map, 0.5)
             self.saliency_map = cv2.GaussianBlur(
                 self.saliency_map, ksize=(25, 25), sigmaX=7, sigmaY=7)
 
@@ -123,7 +142,7 @@ class ClassificationBasedDetector():
         # convert from [row, column] (y,x) to (x,y)
         peak_centers = np.fliplr(peak_centers)
 
-        scores = self.saliency_map[peak_centers[:,1], peak_centers[:, 0]]
+        scores = self.saliency_map[peak_centers[:, 1], peak_centers[:, 0]]
         patch_coordinates_from_center = partial(
             utils.patch_coordinates_from_center,
             image_shape=breast_mask.shape, patch_size=self.bbox_size)

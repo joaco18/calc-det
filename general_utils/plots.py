@@ -8,6 +8,7 @@ from sklearn.metrics import auc
 from matplotlib.lines import Line2D
 from scipy.ndimage.morphology import binary_fill_holes
 from feature_extraction.haar_features.haar_modules import Feature
+from typing import List
 import general_utils.utils as utils
 
 cmap = plt.get_cmap("tab10")
@@ -296,33 +297,44 @@ def draw_our_haar_like_features(
     return image
 
 
-def plot_detections(detections: np.ndarray, image: np.ndarray, k=10):
+def plot_detections(
+    detections: np.ndarray, image: np.ndarray, k=10,
+    gt_bboxes: List[tuple] = None, ax: int = None,
+):
     """Draws red a rectangle (increased in k pixels on each side) on each
     detection, also writes the corresponding score.
     Args:
-        detections (np.ndarray): _description_
-        image (np.ndarray): _description_
-        k (int, optional): _description_. Defaults to 10.
+        detections (np.ndarray): array of detections bboxes [x1, x2, y1, y2, score].
+        image (np.ndarray): image to use as a basis.
+        k (int, optional): Extra size added in both direcitons to the bbox.
+            Defaults to 10.
+        gt_bboxes (List[tuple], optional): array of bboxes coordinates [((x1, y1), (x2, y2))].
+            If provided plotted in green. Defaults to None.
+        ax (bool, optional): Whether to plot the figure in the ax of another plot.
+            Defaults to None.
     """
     image = utils.min_max_norm(image, 255).astype('uint8')
     image = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
     for [x1, x2, y1, y2, score] in detections:
-        if x1 >= k:
-            x1 = x1 - k
-        if y1 >= k:
-            y1 = y1 - k
-        if x2+k <= image.shape[1]:
-            x2 = x2 + k
-        if y2+k <= image.shape[0]:
-            y2 = y2 + k
-        tl = (int(x1), int(y1))
-        br = (int(x2), int(y2))
-        image = cv2.rectangle(image, tl, br, (255, 0, 0), 2)
+        tl, br = utils.adjust_bbox_to_fit(image.shape, ((x1, y1), (x2, y2)), k)
+        image = cv2.rectangle(image, tl, br, (255, 0, 0), 3)
         label = f'{score:.3f}'
-        y = y1 - (k+15) if y1 - (k+15) > (k+15) else y1 + (k+15)
+        y = tl[1]-15 if (tl[1]-15) > 15 else tl[1]+15
         image = cv2.putText(
-            image, label, (int(x1), int(y)), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
-    plt.figure(figsize=(15, 15))
-    plt.imshow(image)
-    plt.axis('off')
-    plt.show()
+            image, label, (int(x1), int(y)), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 3)
+
+    if gt_bboxes is not None:
+        for ((x1, y1), (x2, y2)) in gt_bboxes:
+            tl, br = utils.adjust_bbox_to_fit(image.shape, ((x1, y1), (x2, y2)), k)
+            image = cv2.rectangle(image, tl, br, (0, 255, 0), 3)
+            label = 'GT'
+            y = tl[1]-15 if (tl[1]-15) > 15 else tl[1]+15
+            image = cv2.putText(
+                image, label, (int(x1), int(y)), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 3)
+    ax_ = ax
+    if ax_ is None:
+        f, ax = plt.subplots(1, 1, figsize=(12, 12))
+    ax.imshow(image)
+    ax.axis('off')
+    if ax_ is None:
+        plt.show()
