@@ -70,7 +70,8 @@ class INBreast_Dataset_pytorch(INBreast_Dataset):
         ], ignore_index=True)
 
     def update_sample_used(self, balancing_seed: int = None):
-        self.balance_dataset(balancing_seed)
+        if self.neg_to_pos_ratio is not None:
+            self.balance_dataset(balancing_seed)
 
     def __len__(self):
         return len(self.df)
