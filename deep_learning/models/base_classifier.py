@@ -27,15 +27,22 @@ class CNNClasssifier:
             n_inputs = self.model.fc.in_features
         else:
             n_inputs = self.model.classifier[1].in_features
-        classifier = nn.Sequential(OrderedDict([
-            ('fc1', nn.Linear(n_inputs, fc_dims[0])),
-            ('act1', activation),
-            ('do1', nn.Dropout(dropout)),
-            ('fc2', nn.Linear(fc_dims[0], fc_dims[1])),
-            ('act2', activation),
-            ('do2', nn.Dropout(dropout)),
-            ('fc3', nn.Linear(fc_dims[1], 1))
-        ]))
+
+        if fc_dims is not None:
+            layers_list = []
+            for i in range(len(fc_dims)):
+                in_neurons = n_inputs if i == 0 else fc_dims[i-1]
+                layers_list = layers_list + [
+                    (f'fc{i+1}', nn.Linear(in_neurons, fc_dims[i])),
+                    (f'act{i+1}', activation),
+                    (f'do{i+1}', nn.Dropout(dropout))]
+            layers_list.append((f'fc{i+2}', nn.Linear(fc_dims[i], 1)))
+            classifier = nn.Sequential(OrderedDict(layers_list))
+        else:
+            classifier = nn.Sequential(OrderedDict(
+                ('do', nn.Dropout(dropout))
+                ('fc', nn.Linear(n_inputs, 1)),
+            ))
 
         if hasattr(self.model, 'fc'):
             self.model.fc = classifier
