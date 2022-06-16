@@ -39,10 +39,10 @@ class CNNClasssifier:
             layers_list.append((f'fc{i+2}', nn.Linear(fc_dims[i], 1)))
             classifier = nn.Sequential(OrderedDict(layers_list))
         else:
-            classifier = nn.Sequential(OrderedDict(
-                ('do', nn.Dropout(dropout))
-                ('fc', nn.Linear(n_inputs, 1)),
-            ))
+            classifier = nn.Sequential(OrderedDict([
+                ('do', nn.Dropout(dropout)),
+                ('fc', nn.Linear(n_inputs, 1))
+            ]))
 
         if hasattr(self.model, 'fc'):
             self.model.fc = classifier
