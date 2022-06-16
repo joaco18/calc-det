@@ -26,7 +26,7 @@ class CNNClasssifier:
         if hasattr(self.model, 'fc'):
             n_inputs = self.model.fc.in_features
         else:
-            n_inputs = self.model.classifier[0].in_features
+            n_inputs = self.model.classifier[1].in_features
         classifier = nn.Sequential(OrderedDict([
             ('fc1', nn.Linear(n_inputs, fc_dims[0])),
             ('act1', activation),
