@@ -126,6 +126,14 @@ def train_model(datasets, dataloaders, data_transforms, model, criterion, optimi
                 # get the epoch loss cumulatively
                 running_loss += loss.item() * inputs.size(0)
 
+                if (it != 0) and ((it % cfg['training']['log_iters']) == 0) and (phase == 'train'):
+                    # compute and log the metrics for the iteration
+                    iter_preds = np.concatenate(epoch_preds)
+                    iter_labels = np.concatenate(epoch_labels)
+                    iter_loss = running_loss / len(iter_preds)
+                    iter_metrics = dl_utils.get_metrics(iter_labels, iter_preds)
+                    dl_utils.tensorboard_logs(writer, iter_loss, it, iter_metrics, phase)        
+
             # compute and log the metrics for the epoch
             epoch_preds = np.concatenate(epoch_preds)
             epoch_labels = np.concatenate(epoch_labels)
@@ -155,7 +163,7 @@ def train_model(datasets, dataloaders, data_transforms, model, criterion, optimi
                         'metrics': metrics,
                         'configuration': cfg
                         }, best_model_path)
-                
+
                 if cfg['training']['early_stopping']:
                     diff = metrics[best_metric_name] - previous_metric
                     if diff < cfg['training']['early_stopping_args']['min_diff']:

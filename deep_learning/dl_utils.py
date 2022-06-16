@@ -1,5 +1,5 @@
 import numpy as np
-from sklearn.metrics import roc_curve, f1_score, roc_auc_score, accuracy_score, precision_score, confusion_matrix
+from sklearn.metrics import roc_curve, f1_score, roc_auc_score, confusion_matrix
 
 
 def sensivity_specifity_cutoff(y_true: np.ndarray, y_score: np.ndarray):
@@ -36,12 +36,13 @@ def get_metrics(labels: np.ndarray, preds: np.ndarray):
             'threshold': th}
 
 
-def tensorboard_logs(writer, epoch_loss, epoch, metrics, phase):
+def tensorboard_logs(writer, epoch_loss, epoch, metrics, phase, it=False):
     """Logs a set of metrics and usefull values in a tensorboard session"""
-    writer.add_scalar(f"Loss/{phase}", epoch_loss, epoch)
-    writer.add_scalar(f"Accuracy/{phase}", metrics['accuracy'], epoch)
-    writer.add_scalar(f"F1_score/{phase}", metrics['f1_score'], epoch)
-    writer.add_scalar(f"Auroc/{phase}", metrics['auroc'], epoch)
-    writer.add_scalar(f"Sensitivity/{phase}", metrics['sensitivity'], epoch)
-    writer.add_scalar(f"Specificity/{phase}", metrics['specificity'], epoch)
-    writer.add_scalar(f"Precision/{phase}", metrics['precision'], epoch)
+    it = '_its' if it else ''
+    writer.add_scalar(f"Loss/{phase}{it}", epoch_loss, epoch)
+    writer.add_scalar(f"Accuracy/{phase}{it}", metrics['accuracy'], epoch)
+    writer.add_scalar(f"F1_score/{phase}{it}", metrics['f1_score'], epoch)
+    writer.add_scalar(f"Auroc/{phase}{it}", metrics['auroc'], epoch)
+    writer.add_scalar(f"Sensitivity/{phase}{it}", metrics['sensitivity'], epoch)
+    writer.add_scalar(f"Specificity/{phase}{it}", metrics['specificity'], epoch)
+    writer.add_scalar(f"Precision/{phase}{it}", metrics['precision'], epoch)
