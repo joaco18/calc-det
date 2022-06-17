@@ -364,6 +364,24 @@ def plot_detections(
 
 
 def plot_candidates_rois(image, mask, candidates, conf_thr=0.1, k=10):
+    """Plots labels and plots given candidates on an image
+
+    Args:
+        image (np.ndarray): Image to plot the results
+        mask (np.ndarray): image lesion mask used for candidate labelling
+        candidates (pd.DataFrame): candidates metadata; has to have columns:
+            candidate_coordinates (list): [x, y, radius] of the detected candidate
+            patch_coordinates (tuple(tuple)): ((x1, x2), (y1, y2)) coordinates of a patch around a candidate
+            confidence (float): confidences of each candidate
+        conf_thr (float, optional): final threshold to select candidates.
+            Only those with confidence higher will be considered for labelling and
+            display. Defaults to 0.1.
+        k (int, optional): increase in the size of the plotted bboxes.
+            Plotted bboxe will have side + k by side + k size. Defaults to 10.
+
+    Returns:
+        np.ndarray: image with plotted labelled candidates
+    """
 
     # label candidates
     tp, fp, fn, ignored_candidates = get_tp_fp_fn_center_patch_criteria(
