@@ -1,10 +1,19 @@
+from unittest.mock import DEFAULT
 import cv2
 import numpy as np
 from skimage.measure import label
 from pathlib import Path
 from scipy import spatial
 from numba import njit
-from mc_candidate_proposal.candidate_utils import filter_dets_from_muscle_region
+from candidate_proposal.candidate_utils import filter_dets_from_muscle_region
+
+GSM_DEFAULT_PARAMS = {'rbd_img_path': '',
+                      'threshold': 0.95,
+                      'min_distance': 6,
+                      'area': 14*14,
+                      'store_intermediate': False,
+                      'filter_muscle_region': False,
+                      }
 
 
 @njit
@@ -73,7 +82,8 @@ class MorphologyCalcificationDetection:
             rbd_image = self.reconstruction_by_dialation(
                 image, circle_size=self.dilation_k_size)
             if self.store_intermediate:
-                cv2.imwrite(str(self.rbd_img_path/f'{image_id}.tiff'), rbd_image)
+                cv2.imwrite(
+                    str(self.rbd_img_path/f'{image_id}.tiff'), rbd_image)
 
         # erode breast boundary to avoid FP there
         rbd_image_no_bbound = self.breast_boundary_erosion(rbd_image)
@@ -85,7 +95,8 @@ class MorphologyCalcificationDetection:
         thr1_rbd = rbd_image_no_bbound.copy()
         thr1_rbd[thr1_rbd <= trheshold] = 0
 
-        trheshold = np.quantile(rbd_image_no_bbound[thr1_rbd > 0].ravel(), q=0.8)
+        trheshold = np.quantile(
+            rbd_image_no_bbound[thr1_rbd > 0].ravel(), q=0.8)
         thr_rbd = rbd_image_no_bbound.copy()
         thr_rbd[thr_rbd <= trheshold] = 0
 
@@ -143,7 +154,8 @@ class MorphologyCalcificationDetection:
         """Finds connected components"""
         # binarize and perform connected components labeling
         thr1_rbd_bin = np.where(thr1_rbd > 0, 255, 0).astype('uint8')
-        markers, _ = label(thr1_rbd_bin, background=0, return_num=True, connectivity=1)
+        markers, _ = label(thr1_rbd_bin, background=0,
+                           return_num=True, connectivity=1)
         return markers
 
     def connected_components_filtering(self, markers: np.ndarray):
@@ -169,7 +181,8 @@ class MorphologyCalcificationDetection:
         centers = np.asarray(centers)
         candidate_blobs = np.asarray(candidate_blobs)
         indxs = np.where(centers[:, -1] != 0)[0]
-        contours = [contours[i] for i in range(len(contours)) if i not in indxs]
+        contours = [contours[i]
+                    for i in range(len(contours)) if i not in indxs]
 
         # filter by distance
         if self.min_distance != 0:
@@ -179,7 +192,8 @@ class MorphologyCalcificationDetection:
             indxs = filter_by_distance(centers, pairs)
             if len(indxs) == 0:
                 return None
-            contours = [contours[i] for i in range(len(contours)) if i not in indxs]
+            contours = [contours[i]
+                        for i in range(len(contours)) if i not in indxs]
             candidate_blobs = candidate_blobs[indxs, :]
         # out = cv2.drawContours(out, contours, -1, 255, -1)
         return candidate_blobs

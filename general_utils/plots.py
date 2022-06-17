@@ -1,14 +1,18 @@
-import cv2
-import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
 import math
-
-from sklearn.metrics import auc
-from matplotlib.lines import Line2D
-from scipy.ndimage.morphology import binary_fill_holes
-from feature_extraction.haar_features.haar_modules import Feature
 from typing import List
+
+import cv2
+import matplotlib.patches as mpatches
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import seaborn as sns
+from feature_extraction.haar_features.haar_modules import Feature
+from matplotlib.lines import Line2D
+from metrics.metrics_utils import get_tp_fp_fn_center_patch_criteria
+from scipy.ndimage.morphology import binary_fill_holes
+from sklearn.metrics import auc
+
 import general_utils.utils as utils
 
 cmap = plt.get_cmap("tab10")
@@ -96,7 +100,8 @@ def plot_blobs_2_sets(
             image, (x, y), int(math.sqrt(2) * r)+25, (0, 255, 0), 2
         )
     ax.imshow(image)
-    ax.legend(handles=legend_elements, loc='upper right', frameon=False, labelcolor='w')
+    ax.legend(handles=legend_elements, loc='upper right',
+              frameon=False, labelcolor='w')
     plt.axis('off')
     plt.tight_layout()
     if ax is None:
@@ -148,7 +153,8 @@ def plot_gabor_filters(filters, plots_columns=3):
             Rows are scaled automatically . Defaults to 3.
     """
     plots_rows = int(np.ceil(len(filters)/plots_columns))
-    fig, axs = plt.subplots(plots_rows, plots_columns, tight_layout=True, figsize=(10, 10))
+    fig, axs = plt.subplots(plots_rows, plots_columns,
+                            tight_layout=True, figsize=(10, 10))
     indices = np.indices((plots_columns, plots_rows))
     for ax_idx, (r, c) in enumerate(indices.reshape((2, plots_rows*plots_columns)).T):
         if ax_idx < len(filters):
@@ -159,7 +165,8 @@ def plot_gabor_filters(filters, plots_columns=3):
 
 def plot_froc(
     fpis: np.ndarray, tprs: np.ndarray, total_mC: int = None,
-    label: str = '', ax: int = None, title: str = None, cut_on_50fpi: bool = True
+    label: str = '', ax: int = None, title: str = None,
+    cut_on_50fpi: bool = True, color=cmap(0)
 ):
     """Plot FROC curve
     Args:
@@ -186,7 +193,7 @@ def plot_froc(
         ax.set_title('FROC curve')
 
     fpis = np.asarray(fpis)
-    ax.plot(fpis, tprs, c=cmap(0))
+    ax.plot(fpis, tprs, c=color)
     ax.set_ylim((0, 1))
     if cut_on_50fpi:
         ax.set_xlim(-0.01, 50)
@@ -271,7 +278,8 @@ def draw_our_haar_like_features(
             rect_pts_x = np.append(rect_pts_x, [rect_pts_x[2], rect_pts_x[1]])
 
             rect_pts_y = np.asarray(rect_pts_y) - np.asarray([0, 0, 0, 1])
-            rect_pts_y = np.append(rect_pts_y, [rect_pts_y[2] - 1, rect_pts_y[1] - 1])
+            rect_pts_y = np.append(
+                rect_pts_y, [rect_pts_y[2] - 1, rect_pts_y[1] - 1])
 
         rect_points = list(zip(rect_pts_x, rect_pts_y))
         rect_points = np.asarray(rect_points, dtype='int32')
@@ -298,8 +306,9 @@ def draw_our_haar_like_features(
 
 
 def plot_detections(
-    detections: np.ndarray, image: np.ndarray, k=10,
+    detections: np.ndarray, image: np.ndarray, k=15,
     gt_bboxes: List[tuple] = None, ax: int = None,
+    color=(255, 0, 0), return_image=False
 ):
     """Draws red a rectangle (increased in k pixels on each side) on each
     detection, also writes the corresponding score.
@@ -312,29 +321,88 @@ def plot_detections(
             If provided plotted in green. Defaults to None.
         ax (bool, optional): Whether to plot the figure in the ax of another plot.
             Defaults to None.
+        color (tuple, optional): Color use to plot bboxes and text.
+            Defaults to red  (255, 0, 0).
+        return_image (bool, optional): Whether to plot the figure or to return the image.
+            Defaults to False (plot figure).
+
+    Returns:
+        image (np.ndarray): image with plotted bboxes if return_image=True, otherwise None
     """
-    image = utils.min_max_norm(image, 255).astype('uint8')
-    image = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
+    if len(image.shape) < 3:
+        image = utils.min_max_norm(image, 255).astype('uint8')
+        image = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
     for [x1, x2, y1, y2, score] in detections:
         tl, br = utils.adjust_bbox_to_fit(image.shape, ((x1, y1), (x2, y2)), k)
-        image = cv2.rectangle(image, tl, br, (255, 0, 0), 3)
+        image = cv2.rectangle(image, tl, br, color, 2)
         label = f'{score:.3f}'
         y = tl[1]-15 if (tl[1]-15) > 15 else tl[1]+15
         image = cv2.putText(
-            image, label, (int(x1), int(y)), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 3)
+            image, label, (int(x1), int(y)), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
 
     if gt_bboxes is not None:
         for ((x1, y1), (x2, y2)) in gt_bboxes:
-            tl, br = utils.adjust_bbox_to_fit(image.shape, ((x1, y1), (x2, y2)), k)
+            tl, br = utils.adjust_bbox_to_fit(
+                image.shape, ((x1, y1), (x2, y2)), k)
             image = cv2.rectangle(image, tl, br, (0, 255, 0), 3)
             label = 'GT'
             y = tl[1]-15 if (tl[1]-15) > 15 else tl[1]+15
             image = cv2.putText(
                 image, label, (int(x1), int(y)), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 3)
-    ax_ = ax
-    if ax_ is None:
-        f, ax = plt.subplots(1, 1, figsize=(12, 12))
-    ax.imshow(image)
-    ax.axis('off')
-    if ax_ is None:
-        plt.show()
+    if return_image:
+        return image
+    else:
+        ax_ = ax
+        if ax_ is None:
+            f, ax = plt.subplots(1, 1, figsize=(12, 12))
+        ax.imshow(image)
+        ax.axis('off')
+        if ax_ is None:
+            plt.show()
+
+
+
+
+def plot_candidates_rois(image, mask, candidates, conf_thr=0.1, k=10):
+
+    # label candidates
+    tp, fp, fn, ignored_candidates = get_tp_fp_fn_center_patch_criteria(
+        np.stack(candidates.candidate_coordinates.values).astype(int), mask, None, 14, True)
+
+    # perform matching between labeld tp/fp and detected candidates
+
+    candidates['candidate_coordinates_str'] = candidates.candidate_coordinates.astype(
+        str)
+    candidates = candidates.set_index('candidate_coordinates_str')
+    candidates['label'] = False
+    for cidx, c in tp.iterrows():
+        candidates.loc[f'[{c["x"]}, {c["y"]}, {c["radius"]}]', 'label'] = True
+
+    # format candidate coordinates to plotting format
+    candidates['plot_bboxes'] = [[x[1][0], x[1][1], x[0][0], x[0][1], candidates.confidence.values[xidx]]
+                                 for xidx, x in enumerate(candidates.patch_coordinates.values)]
+    fn_bboxes = pd.DataFrame([fn['x'] - fn['radius'], fn['x'] + fn['radius'], fn['y'] -
+                             fn['radius'], fn['y'] + fn['radius'], pd.Series([-1]*len(fn))]).T.values
+
+    # mark as FN detected candidates with confidence < conf_thr
+    if len(candidates[(candidates.label) & (candidates.confidence < conf_thr)]) > 0:
+        fn_bboxes = np.vstack([fn_bboxes, np.stack(candidates[(candidates.label) & (
+            candidates.confidence < conf_thr)].plot_bboxes.values)])
+
+    image = plot_detections(candidates[(candidates.label) & (
+        candidates.confidence >= conf_thr)].plot_bboxes, image, k=k, color=(0, 255, 0), return_image=True)
+    image = plot_detections(candidates[(~candidates.label) & (
+        candidates.confidence >= conf_thr)].plot_bboxes, image, k=k, color=(0, 0, 255), return_image=True)
+    image = plot_detections(fn_bboxes, image, k=k,
+                            color=(255, 0, 0), return_image=True)
+
+    image = cv2.putText(
+        image, 'TP', (image.shape[1]-150, 100), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+    image = cv2.putText(
+        image, 'FP', (image.shape[1]-150, 200), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+    image = cv2.putText(image, 'FN (-1 not detected)',
+                        (image.shape[1]-400, 300), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
+    image = cv2.putText(image, 'FN (* detected)',
+                        (image.shape[1]-300, 400), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
+
+    return image

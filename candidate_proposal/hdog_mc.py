@@ -15,7 +15,7 @@ from pathlib import Path
 from scipy import spatial
 from metrics.metrics_utils import compare_and_filter_pairs
 from general_utils.utils import min_max_norm, peak_local_max
-from mc_candidate_proposal.candidate_utils import filter_dets_from_muscle_region
+from candidate_proposal.candidate_utils import filter_dets_from_muscle_region
 
 
 logging.basicConfig(level=logging.INFO)

@@ -8,14 +8,15 @@ from skimage import restoration
 
 from general_utils.utils import patch_coordinates_from_center, min_max_norm, sobel_gradient
 from general_utils.dehazing import dehaze
-from mc_candidate_proposal.candidate_utils import filter_dets_from_muscle_region
+from candidate_proposal.candidate_utils import filter_dets_from_muscle_region
 
-from mc_candidate_proposal.morphology_mc import filter_by_distance
+from candidate_proposal.morphology_mc import filter_by_distance
 
 DEHAZING_PARAMS = {'omega': 0.9, 'window_size': 11, 'radius': 40, 'eps': 1e-5}
 
 HOUGH1_PARAMS = {'method': cv2.HOUGH_GRADIENT, 'dp': 1, 'minDist': 10,
                  'param1': 300, 'param2': 5,  'minRadius': 2, 'maxRadius': 10}
+
 HOUGH2_PARAMS = {'method': cv2.HOUGH_GRADIENT, 'dp': 1, 'minDist': 20,
                  'param1': 300, 'param2': 3,  'minRadius': 2, 'maxRadius': 10}
 
