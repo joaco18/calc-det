@@ -363,7 +363,7 @@ def plot_detections(
 
 
 
-def plot_candidates_rois(image, mask, candidates, conf_thr=0.1, k=10):
+def plot_candidates_rois(image, mask, candidates, conf_thr=0.1043, k=10):
     """Plots labels and plots given candidates on an image
 
     Args:
@@ -375,7 +375,7 @@ def plot_candidates_rois(image, mask, candidates, conf_thr=0.1, k=10):
             confidence (float): confidences of each candidate
         conf_thr (float, optional): final threshold to select candidates.
             Only those with confidence higher will be considered for labelling and
-            display. Defaults to 0.1.
+            display. Defaults to 0.1043 (selected using Youdex index on FROC).
         k (int, optional): increase in the size of the plotted bboxes.
             Plotted bboxe will have side + k by side + k size. Defaults to 10.
 
