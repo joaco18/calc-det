@@ -1,4 +1,8 @@
+import sys
+from pathlib import Path
+sys.path.insert(0, Path.cwd().parent)
 import cv2
+import pickle 
 import logging
 import numpy as np
 import multiprocessing as mp
@@ -21,6 +25,35 @@ wavelet_decomp_names = ['LL1', 'LH1', 'HL1', 'HH1', 'LL2', 'LH2', 'HL2', 'HH2']
 glcm_decompositions = ['LH1', 'HL1', 'HH1']
 skimage_glcm_features = ['correlation',
                          'homogeneity', 'contrast', 'dissimilarity']
+
+
+# FE hyperparameters
+CENTER_CROP_PATCH = 14
+PATCH_SIZE = 14
+
+GABOR_PARAMS = {'scale': 2, 'orientation': 3,
+                'max_freq': 0.2, 'ksize': (20, 20), 'sigma': 3}
+WAVELET_PARAMS = {'angles': [0, np.pi/4, np.pi/2]}
+
+
+haar_feat_path = Path.cwd().parent / 'data/final_haar_500_feat_selection_gsm.p' #'/home/vzalevskyi/projects/calc-det/data/final_haar_500_feat_selection_gsm.p'
+with open(haar_feat_path, 'rb') as f:
+    selection = pickle.load(f)
+    
+HAAR_PARAMS = {
+    'skimage': {
+        'feature_type': selection['skimage_haar_feature_types_sel'],
+        'feature_coord': selection['skimage_haar_feature_coords_sel']
+    },
+    'ours': {
+        'horizontal_feature_selection': selection['hor_feats_selection'].tolist(),
+        'rotated_feature_selection': selection['rot_feats_selection'].tolist(),
+        'rotated_feature_types': None,
+        'horizontal_feature_types': None
+    },
+    'patch_size': 14
+}
+
 
 logging.basicConfig(level=logging.INFO)
 
@@ -417,7 +450,7 @@ class CandidatesFeatureExtraction_MP(CandidatesFeatureExtraction):
     
     Works around 4x faster than the one above.
     """
-    def __init__(self, patch_size: int, fos=True, gabor_params=None, wavelet_params=None, haar_params=None, n_jobs=8):
+    def __init__(self, patch_size: int = PATCH_SIZE, fos=True, gabor_params=GABOR_PARAMS, wavelet_params=WAVELET_PARAMS, haar_params=HAAR_PARAMS, n_jobs=8):
         super().__init__(patch_size, fos, gabor_params, wavelet_params, haar_params)
         self.n_jobs = n_jobs
     

@@ -8,6 +8,9 @@ from numba import njit
 from itertools import zip_longest
 from skimage.measure import label
 
+import torch
+import torchvision
+
 logging.basicConfig(level=logging.INFO)
 
 
@@ -375,3 +378,22 @@ def adjust_bbox_to_fit(img_shape: tuple, bbox: tuple, k: int):
     tl = (int(x1), int(y1))
     br = (int(x2), int(y2))
     return tl, br
+
+def non_max_supression(detections: np.ndarray, iou_threshold=0.5, return_indexes=False):
+    """Filters the detections bboxes using NMS.
+    Args:
+        detections (np.ndarray): [x1, x2, y1, y2, score]
+    Returns:
+        detections (np.ndarray): [x1, x2, y1, y2, score]
+    """
+    bboxes = np.asarray(
+        [detections[:, 0], detections[:, 2], detections[:, 1], detections[:, 3]]).T
+
+    bboxes = torch.from_numpy(bboxes).to(torch.float)
+    scores = torch.from_numpy(detections[:, 4]).to(torch.float)
+    indxs = torchvision.ops.nms(bboxes, scores, iou_threshold=iou_threshold)
+    
+    if return_indexes:
+        return indxs
+    else:
+        return detections[indxs, :]
