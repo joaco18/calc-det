@@ -1,4 +1,5 @@
 import sys; sys.path.insert(0, '..')
+sys.path.insert(0, '../..')
 
 import general_utils.utils as utils
 import feature_extraction.haar_features.haar_modules as hm
