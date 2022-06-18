@@ -115,25 +115,41 @@ class INBreast_Dataset_pytorch(INBreast_Dataset):
             if mask_filename != 'empty_mask':
                 mask_filename = self.patch_mask_path / mask_filename
                 mask = cv2.imread(str(mask_filename), cv2.IMREAD_ANYDEPTH)
-                sample['lesion_bboxes'] = np.asarray(utils.get_bbox_of_lesions_in_patch(mask))
+                sample['boxes'] = np.asarray(utils.get_bbox_of_lesions_in_patch(mask))
                 # sample['ignored_lesion_bboxes'] = np.asarray(utils.get_bbox_of_lesions_in_patch(
                 #     mask, ignored_lesions=True), dtype=object)
                 sample['lesion_centers'] = \
-                    [utils.get_center_bbox(bbox[0], bbox[1]) for bbox in sample['lesion_bboxes']]
+                    [utils.get_center_bbox(bbox[0], bbox[1]) for bbox in sample['boxes']]
                 # sample['ignored_lesion_centers'] = [
                 #     utils.get_center_bbox(bbox[0], bbox[1])
                 #     for bbox in sample['ignored_lesion_bboxes']]
-                sample['labels'] = np.ones((len(sample['lesion_bboxes']), 1))
+                
+                sample['boxes'] = [[*tl, *br] for tl, br in  sample['boxes']]
+                sample['boxes'] = [self.correct_boxes(b, mask.shape) for b in sample['boxes']]
+                sample['boxes'] = torch.as_tensor(sample['boxes'], dtype=torch.float32)
+                sample['labels'] = torch.ones((len(sample['boxes']),), dtype=torch.int64)
+                
+                target = {'boxes':sample['boxes'], 'labels':sample['labels']}
             else:
-                sample['lesion_bboxes'] = []
-                # sample['ignored_lesion_bboxes'] = []
+                sample['boxes'] = []
+                # sample['boxes'] = []
                 sample['lesion_centers'] = []
                 # sample['ignored_lesion_centers'] = []
-                sample['labels'] = np.zeros((len(sample['lesion_bboxes']), 1))
-            return sample['label'], sample['img'], sample['lesion_bboxes'], \
-                sample['lesion_centers'], sample['labels']
+                sample['labels'] = np.zeros((len(sample['boxes']), 1))
+            
+            return torch.as_tensor(sample['img']), target
 
-
+    def correct_boxes(self, box, image_shape):
+        
+        max_square_enlargment = min(image_shape[0] - box[2],
+                                    image_shape[1] - box[3])
+        sq_side = 14 if max_square_enlargment>=14 else max_square_enlargment
+        if box[0] == box[2]:
+            box[2] = min(box[2] + sq_side, image_shape[1])
+        if box[1] == box[3]:
+            box[3] = min(box[3] + sq_side, image_shape[0])
+            
+        return box
 class ImgCropsDataset():
     """Dataset of patches obtained from a single image"""
     def __init__(
