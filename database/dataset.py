@@ -214,7 +214,9 @@ class INBreast_Dataset(Dataset):
                         assert self.patch_size >= self.max_lesion_diam_px, \
                             'The largest lesion selected doesn\' fit inside the patch ' \
                             'size selected.\n Please modify it or use \'all\' extraction method.'
-                    max_size_in_db = int(np.ceil(self.rois_df.radius.max()))
+                    selection = self.rois_df.lesion_type != 'ignored_lesion'
+                    max_size_in_db = int(
+                        np.ceil(self.rois_df.loc[selection, 'radius'].max()))
                     assert self.patch_size >= max_size_in_db, \
                         f'The largest lesion present in the dataset ({max_size_in_db}) doesn\'t' \
                         f' fit inside the patch size selected.\n Please modify it or use' \
@@ -881,12 +883,19 @@ class INBreast_Dataset(Dataset):
                 if mask_filename != 'empty_mask':
                     mask_filename = self.patch_mask_path / mask_filename
                     mask = cv2.imread(str(mask_filename), cv2.IMREAD_ANYDEPTH)
-                    sample["lesion_bboxes"] = utils.get_bbox_of_lesions_in_patch(mask)
-                    sample["ignored_lesion_bboxes"] = utils.get_bbox_of_lesions_in_patch(
-                        mask, ignored_lesions=True)
+                    sample["lesion_bboxes"] = np.asarray(utils.get_bbox_of_lesions_in_patch(mask))
+                    sample["ignored_lesion_bboxes"] = np.asarray(utils.get_bbox_of_lesions_in_patch(
+                        mask, ignored_lesions=True))
+                    sample['lesion_centers'] = \
+                        [utils.get_center_bbox(bbox) for bbox in sample["lesion_bboxes"]]
+                    sample['ignored_lesion_centers'] = \
+                        [utils.get_center_bbox(bbox) for bbox in sample["ignored_lesion_bboxes"]]
                 else:
                     mask = np.zeros(img.shape)
                     sample["lesion_bboxes"] = []
+                    sample["ignored_lesion_bboxes"] = []
+                    sample['lesion_centers'] = []
+                    sample['ignored_lesion_centers'] = []
 
             # Consider the cases with lesions inside lesions
             holes = mask.astype('float32').copy()
