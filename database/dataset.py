@@ -575,7 +575,7 @@ class INBreast_Dataset(Dataset):
         normal_patches_df = normal_patches_df.loc[normal_patches_df.label == 'normal']
 
         # Concatenate dfs
-        patches_df = pd.concat([patches_df, normal_patches_df])
+        patches_df = pd.concat([patches_df, normal_patches_df], ignore_index=True)
         return patches_df.sort_values(by='img_id')
 
     def extract_centered_patches_from_image(self, idx: int):
