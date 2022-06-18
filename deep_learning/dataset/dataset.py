@@ -53,6 +53,8 @@ class INBreast_Dataset_pytorch(INBreast_Dataset):
         self.total_df = self.df.copy()
         self.normalization = normalization
         self.for_detection_net = for_detection_net
+        self.extract_patches_method = extract_patches_method
+        self.patch_size = patch_size
 
         if patch_images_path is not None:
             self.patch_img_path = patch_images_path/'patches'
@@ -108,30 +110,35 @@ class INBreast_Dataset_pytorch(INBreast_Dataset):
         img = np.repeat(img, 3, axis=0)
         sample['img'] = img
 
-        if not self.for_detection_net:
-            return sample
-        else:
+        if self.for_detection_net or (self.extract_patches_method != 'all'):
             mask_filename = self.df['mask_filename'].iloc[idx]
             if mask_filename != 'empty_mask':
                 mask_filename = self.patch_mask_path / mask_filename
                 mask = cv2.imread(str(mask_filename), cv2.IMREAD_ANYDEPTH)
                 sample['lesion_bboxes'] = np.asarray(utils.get_bbox_of_lesions_in_patch(mask))
-                # sample['ignored_lesion_bboxes'] = np.asarray(utils.get_bbox_of_lesions_in_patch(
-                #     mask, ignored_lesions=True), dtype=object)
-                sample['lesion_centers'] = \
-                    [utils.get_center_bbox(bbox[0], bbox[1]) for bbox in sample['lesion_bboxes']]
-                # sample['ignored_lesion_centers'] = [
-                #     utils.get_center_bbox(bbox[0], bbox[1])
-                #     for bbox in sample['ignored_lesion_bboxes']]
+                sample['lesion_centers'] = np.asarray(
+                    [utils.get_center_bbox(bbox[0], bbox[1]) for bbox in sample['lesion_bboxes']])
                 sample['labels'] = np.ones((len(sample['lesion_bboxes']), 1))
             else:
                 sample['lesion_bboxes'] = []
-                # sample['ignored_lesion_bboxes'] = []
                 sample['lesion_centers'] = []
-                # sample['ignored_lesion_centers'] = []
                 sample['labels'] = np.zeros((len(sample['lesion_bboxes']), 1))
-            return sample['label'], sample['img'], sample['lesion_bboxes'], \
-                sample['lesion_centers'], sample['labels']
+
+            if self.extract_patches_method == 'all':
+                return sample['label'], sample['img'], sample['lesion_bboxes'], \
+                    sample['lesion_centers'], sample['labels']
+            else:
+                patch_center = self.patch_size // 2
+                if len(sample['lesion_centers']) != 0:
+                    distances = np.asarray([
+                        abs(center[0] - patch_center) + abs(center[1] - patch_center)
+                        for center in sample['lesion_centers']])
+                    sample['lesion_center'] = \
+                        np.asarray(sample['lesion_centers'][np.argmin(distances)])
+                else:
+                    sample['lesion_center'] = np.asanyarray([-1, -1])
+                del sample['lesion_bboxes'], sample['lesion_centers'], sample['labels']
+        return sample
 
 
 class ImgCropsDataset():
