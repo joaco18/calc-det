@@ -214,8 +214,8 @@ class CandidatesFeatureExtraction:
             self.haar_params['patch_size'], True, True,
             self.haar_params['ours']['horizontal_feature_types'],
             self.haar_params['ours']['rotated_feature_types'],
-            self.haar_params['ours']['rotated_feature_selection'],
-            self.haar_params['ours']['horizontal_feature_selection']
+            self.haar_params['ours']['horizontal_feature_selection'],
+            self.haar_params['ours']['rotated_feature_selection']
         )
         self.our_haar_feature_types_h = haarfe.features_h
         self.our_haar_feature_types_r = haarfe.features_r
