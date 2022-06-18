@@ -5,6 +5,7 @@ import sys; sys.path.insert(0, str(thispath.parent))
 import cv2
 import torch
 import torchvision
+import logging
 
 import numpy as np
 
@@ -125,7 +126,7 @@ class ClassificationBasedDetector():
         detections = self.get_detections()
         # nms
         if self.nms:
-            detections = self.non_max_supression(detections)
+            detections = self.non_max_supression(detections, self.iou_threshold)
         return detections
 
     def get_detections(self):
@@ -139,28 +140,32 @@ class ClassificationBasedDetector():
             self.saliency_map, footprint=np.ones((self.bbox_size, self.bbox_size)),
             threshold_abs=self.threshold, additional_mask=breast_mask
         )
+        if len(peak_centers) == 0:
+            logging.warning(
+                "The current configuration led to no detections in the image, returning None")
+            return None
         # convert from [row, column] (y,x) to (x,y)
         peak_centers = np.fliplr(peak_centers)
-
         scores = self.saliency_map[peak_centers[:, 1], peak_centers[:, 0]]
         patch_coordinates_from_center = partial(
             utils.patch_coordinates_from_center,
             image_shape=breast_mask.shape, patch_size=self.bbox_size)
         patches_coords = np.array(list(map(patch_coordinates_from_center, peak_centers)))
-        return np.concatenate([patches_coords, scores.reshape(-1, 1)], axis=1)
+        return np.concatenate([peak_centers, patches_coords, scores.reshape(-1, 1)], axis=1)
 
     @staticmethod
-    def non_max_supression(detections: np.ndarray):
+    def non_max_supression(detections: np.ndarray, iou_threshold: float = 0.):
         """Filters the detections bboxes using NMS.
         Args:
-            detections (np.ndarray): [x1, x2, y1, y2, score]
+            detections (np.ndarray): [xc, yc, x1, x2, y1, y2, score]
+            iou_threshold (float): iou threshold value.
         Returns:
-            detections (np.ndarray): [x1, x2, y1, y2, score]
+            detections (np.ndarray): [xc, yc, x1, x2, y1, y2, score]
         """
         bboxes = np.asarray(
-            [detections[:, 0], detections[:, 2], detections[:, 1], detections[:, 3]]).T
+            [detections[:, 2], detections[:, 4], detections[:, 3], detections[:, 5]]).T
 
         bboxes = torch.from_numpy(bboxes).to(torch.float)
-        scores = torch.from_numpy(detections[:, 4]).to(torch.float)
-        indxs = torchvision.ops.nms(bboxes, scores, iou_threshold=0)
+        scores = torch.from_numpy(detections[:, 6]).to(torch.float)
+        indxs = torchvision.ops.nms(bboxes, scores, iou_threshold=iou_threshold)
         return detections[indxs, :]
