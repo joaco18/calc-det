@@ -335,13 +335,13 @@ class CandidatesFeatureExtraction:
         return np.asarray(wavelet_params)
 
     def wav_glcm_features(self, single_decomp: np.ndarray, idx: int):
-        """Extracts features from a Gray Level Co-occurence Matrix (D=5,theta = 0)
-            from a single wavelet decomposition
+        """Extracts features from a Gray Level Co-occurence Matrix with D=2 and 
+            theta = wavelet_params['angles'], from a single wavelet decomposition.
         Features: energy, correlation, homogeneity, contrast, dissimilarity,
             (DROPPED: ASM, entropy, uniformity, sum of squares, autocorrelation)
 
         Args:
-            single_decomp (np.ndarray): single decomposition from list [LH1, HL1,HH1]
+            single_decomp (np.ndarray): single decomposition from list [LH1, HL1, HH1]
             Note: expected to be used on three decompositions for correct feature naming
             idx (int): index of the decomposition from list above
 
@@ -353,7 +353,6 @@ class CandidatesFeatureExtraction:
             single_decomp, max_val=255).astype(np.uint8), [2], self.wavelet_params['angles'], normed=True)
 
         glcm_features = []
-
         
         for feature_name in skimage_glcm_features:
             feature_results = graycoprops(
