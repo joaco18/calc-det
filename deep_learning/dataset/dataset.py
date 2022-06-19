@@ -146,20 +146,18 @@ class INBreast_Dataset_pytorch(INBreast_Dataset):
                         center_noise_x = np.random.randint(-offset, offset, dtype=int)
                         center_noise_y = np.random.randint(-offset, offset, dtype=int)
                         center[0], center[1] = center[0]+center_noise_x, center[1]+center_noise_y
-                        sample['img'] = sample['img'][
-                            :,
-                            center[1] - self.half_crop: center[1] + self.crop_size - self.half_crop,
-                            center[0] - self.half_crop: center[0] + self.crop_size - self.half_crop]
+                        x1, x2, y1, y2 = utils.patch_coordinates_from_center(
+                            center, sample['img'].shape, self.crop_size)
+                        sample['img'] = sample['img'][:, y1:y2, x1:x2]
                 else:
                     sample['lesion_center'] = np.asanyarray([-1, -1])
                     center_x = np.random.randint(
                         self.half_crop+1, high=self.patch_size-self.half_crop+1, dtype=int)
                     center_y = np.random.randint(
                         self.half_crop+1, high=self.patch_size-self.half_crop+1, dtype=int)
-                    sample['img'] = sample['img'][
-                        :,
-                        center_y - self.half_crop: center_y + self.crop_size - self.half_crop,
-                        center_x - self.half_crop: center_x + self.crop_size - self.half_crop]
+                    x1, x2, y1, y2 = utils.patch_coordinates_from_center(
+                            (center_x, center_y), sample['img'].shape, self.crop_size)
+                    sample['img'] = sample['img'][:, y1:y2, x1:x2]
                 del sample['lesion_bboxes'], sample['lesion_centers'], sample['labels']
         return sample
 
