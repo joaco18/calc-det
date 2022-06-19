@@ -1,4 +1,5 @@
 from pathlib import Path
+from re import X
 thispath = Path.cwd().resolve()
 import sys; sys.path.insert(0, str(thispath.parent))
 
@@ -138,18 +139,28 @@ class INBreast_Dataset_pytorch(INBreast_Dataset):
                 sample['labels'] = np.zeros((len(sample['boxes']), 1))
             
             return torch.as_tensor(sample['img']), target
-
-    def correct_boxes(self, box, image_shape):
-        
-        max_square_enlargment = min(image_shape[0] - box[2],
-                                    image_shape[1] - box[3])
-        sq_side = 14 if max_square_enlargment>=14 else max_square_enlargment
-        if box[0] == box[2]:
-            box[2] = min(box[2] + sq_side, image_shape[1])
-        if box[1] == box[3]:
-            box[3] = min(box[3] + sq_side, image_shape[0])
+    @staticmethod
+    def correct_boxes(box, image_shape, min_box_size=14):
+        def correct_boxes_axis(x1, x2, image_shape_ax, min_box_size=min_box_size):
+            exp_x = min_box_size - (x2 - x1)
             
-        return box
+            if x1 >= exp_x//2:
+                xleft_exp = 0
+                x1 = x1 - exp_x//2
+            elif x1 < exp_x//2:
+                xleft_exp = exp_x//2 - x1
+                x1 = 0
+            
+            x2 = x2 + xleft_exp
+            if x2 + exp_x//2 <= image_shape_ax:
+                x2 = x2 +  exp_x//2
+            elif x2 +  exp_x//2 > image_shape_ax:
+                x1 = x1 - (image_shape_ax - x2 +  exp_x//2)
+                x2 = image_shape_ax
+            return x1, x2
+        corr_x1, corr_x2 = correct_boxes_axis(box[0], box[2], image_shape[0])
+        corr_y1, corr_y2 = correct_boxes_axis(box[1], box[3], image_shape[1])
+        return [corr_x1, corr_y1, corr_x2, corr_y2]
 class ImgCropsDataset():
     """Dataset of patches obtained from a single image"""
     def __init__(
