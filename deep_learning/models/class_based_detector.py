@@ -26,6 +26,7 @@ class ClassificationBasedDetector():
         pred_kind: str = 'score',
         norm_kind: str = 'avg',
         post_proc: bool = True,
+        k_size: int = 3,
         patch_size: int = 224,
         stride: int = 25,
         min_breast_fraction_patch: int = None,
@@ -73,6 +74,7 @@ class ClassificationBasedDetector():
         self.iou_threshold = iou_threshold
         self.pred_kind = pred_kind
         self.norm_kind = norm_kind
+        self.k_size = k_size
 
     def detect(self, img: np.ndarray):
         """Divides the image in patches, runs classification, joints the results and extracts
@@ -117,10 +119,11 @@ class ClassificationBasedDetector():
             self.saliency_map = utils.min_max_norm(self.saliency_map, 1).astype('float32')
 
         # do post_processing
+        sigma = self.k_size // 3
         if self.post_proc:
             self.saliency_map_adj = utils.adjust_gamma_float(self.saliency_map, 0.5)
             self.saliency_map = cv2.GaussianBlur(
-                self.saliency_map, ksize=(25, 25), sigmaX=7, sigmaY=7)
+                self.saliency_map, ksize=(self.k_size, self.k_size), sigmaX=sigma, sigmaY=sigma)
 
         # extract detections bboxes
         detections = self.get_detections()
