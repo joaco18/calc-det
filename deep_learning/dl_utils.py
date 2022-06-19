@@ -1,5 +1,5 @@
 import numpy as np
-from sklearn.metrics import roc_curve, f1_score, roc_auc_score, confusion_matrix
+from sklearn.metrics import roc_curve, f1_score, roc_auc_score, confusion_matrix, average_precision_score
 
 
 def sensivity_specifity_cutoff(y_true: np.ndarray, y_score: np.ndarray):
@@ -28,6 +28,7 @@ def get_metrics(labels: np.ndarray, preds: np.ndarray):
     bin_preds = np.where(preds > th, True, False)
     tn, fp, fn, tp = confusion_matrix(labels, bin_preds).ravel()
     return {'auroc': roc_auc_score(labels, preds),
+            'avgpr': average_precision_score(labels, preds),
             'f1_score': f1_score(labels, bin_preds),
             'accuracy': (tp+tn)/(tp+tn+fp+fn),
             'precision': tp/(tp+fp),
@@ -43,6 +44,7 @@ def tensorboard_logs(writer, epoch_loss, epoch, metrics, phase, it=False):
     writer.add_scalar(f"Accuracy/{phase}{it}", metrics['accuracy'], epoch)
     writer.add_scalar(f"F1_score/{phase}{it}", metrics['f1_score'], epoch)
     writer.add_scalar(f"Auroc/{phase}{it}", metrics['auroc'], epoch)
+    writer.add_scalar(f"AvgPR/{phase}{it}", metrics['avgpr'], epoch)
     writer.add_scalar(f"Sensitivity/{phase}{it}", metrics['sensitivity'], epoch)
     writer.add_scalar(f"Specificity/{phase}{it}", metrics['specificity'], epoch)
     writer.add_scalar(f"Precision/{phase}{it}", metrics['precision'], epoch)
