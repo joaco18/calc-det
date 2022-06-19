@@ -15,6 +15,7 @@ notebooks/try_dim_red_haar_selection.ipynb
 deep_learning/config.yml
 notebooks/develop_config.ipynb
 notebooks/dev_dcm_masks.ipynb
+notebooks/develop_cropping_strategy.ipynb
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
