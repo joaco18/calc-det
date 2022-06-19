@@ -28,6 +28,8 @@ class INBreast_Dataset_pytorch(INBreast_Dataset):
         delete_previous: bool = True,
         extract_patches_method: str = 'all',
         patch_size: int = 224,
+        crop_size: int = 32,
+        center_noise: int = 10,
         stride: int = 100,
         min_breast_fraction_roi: float = 0.7,
         n_jobs: int = -1,
@@ -55,6 +57,9 @@ class INBreast_Dataset_pytorch(INBreast_Dataset):
         self.for_detection_net = for_detection_net
         self.extract_patches_method = extract_patches_method
         self.patch_size = patch_size
+        self.crop_size = crop_size
+        self.half_crop = int(self.crop_size // 2)
+        self.center_noise = center_noise
 
         if patch_images_path is not None:
             self.patch_img_path = patch_images_path/'patches'
@@ -134,9 +139,27 @@ class INBreast_Dataset_pytorch(INBreast_Dataset):
                         abs(center[0] - patch_center) + abs(center[1] - patch_center)
                         for center in sample['lesion_centers']])
                     sample['lesion_center'] = \
-                        np.asarray(sample['lesion_centers'][np.argmin(distances)])
+                        np.asarray(sample['lesion_centers'][np.argmin(distances)], dtype=int)
+                    if sample['label'] == 1:
+                        center = sample['lesion_center']
+                        offset = self.center_noise // 2
+                        center_noise_x = np.random.randint(-offset, offset, dtype=int)
+                        center_noise_y = np.random.randint(-offset, offset, dtype=int)
+                        center[0], center[1] = center[0]+center_noise_x, center[1]+center_noise_y
+                        sample['img'] = sample['img'][
+                            :,
+                            center[1] - self.half_crop: center[1] + self.crop_size - self.half_crop,
+                            center[0] - self.half_crop: center[0] + self.crop_size - self.half_crop]
                 else:
                     sample['lesion_center'] = np.asanyarray([-1, -1])
+                    center_x = np.random.randint(
+                        self.half_crop+1, high=self.patch_size-self.half_crop+1, dtype=int)
+                    center_y = np.random.randint(
+                        self.half_crop+1, high=self.patch_size-self.half_crop+1, dtype=int)
+                    sample['img'] = sample['img'][
+                        :,
+                        center_y - self.half_crop: center_y + self.crop_size - self.half_crop,
+                        center_x - self.half_crop: center_x + self.crop_size - self.half_crop]
                 del sample['lesion_bboxes'], sample['lesion_centers'], sample['labels']
         return sample
 
