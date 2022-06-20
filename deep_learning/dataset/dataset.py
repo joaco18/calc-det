@@ -38,7 +38,7 @@ class INBreast_Dataset_pytorch(INBreast_Dataset):
         normalization: str = 'z_score',
         get_lesion_bboxes: bool = False,
         for_detection_net: bool = False,
-        detection_min_bbox_size: int = 14,
+        detection_bbox_size: int = 14,
         **extra
     ):
         super(INBreast_Dataset_pytorch, self).__init__(
@@ -54,7 +54,7 @@ class INBreast_Dataset_pytorch(INBreast_Dataset):
         self.total_df = self.df.copy()
         self.normalization = normalization
         self.for_detection_net = for_detection_net
-        self.detection_min_bbox_size = detection_min_bbox_size
+        self.detection_bbox_size = detection_bbox_size
 
         if patch_images_path is not None:
             self.patch_img_path = patch_images_path/'patches'
@@ -152,7 +152,7 @@ class INBreast_Dataset_pytorch(INBreast_Dataset):
         # TODO: EXTRACTED TO A SEPERATE FUNCTION IN CASE WE WANT TO APPLY
         # MORE LOGIC TO THIS CORRECTION (DIFFERENT BOX SIZE BASED ON THE TYPE OF LESION
         # LABEL /pixel-label/not pixel)
-        x1, x2, y1, y2 = utils.patch_coordinates_from_center(center, image_shape, self.detection_min_bbox_size)
+        x1, x2, y1, y2 = utils.patch_coordinates_from_center(center, image_shape, self.detection_bbox_size)
         return [x1, y1, x2, y2]
 
 class ImgCropsDataset():
