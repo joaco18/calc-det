@@ -1,5 +1,4 @@
 from pathlib import Path
-from re import X
 thispath = Path.cwd().resolve()
 import sys; sys.path.insert(0, str(thispath.parent))
 
