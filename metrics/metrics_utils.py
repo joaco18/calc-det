@@ -360,7 +360,7 @@ def patches_intersections_with_labels(
 
 def get_tp_fp_fn_center_patch_criteria(
     candidates: np.ndarray, roi_mask: np.ndarray, center_region_size: int, patch_size: int,
-    use_euclidean_dist: bool = False
+    use_euclidean_dist: bool = False, scores_passed: bool = False
 ):
     """
     Given an array of candidates and the mask of labels, it computes the itersection of a
@@ -382,6 +382,7 @@ def get_tp_fp_fn_center_patch_criteria(
             or p=infinity minkowsky distance (False - aka rectangular patch), between the center
             of the detect candidate and the closest point of sorrounding ground truth labels.
             Defaults to False
+        scores_passed: if the scores are already available and included in the candidates array
     Returns:
         tp (pd.DataFrame): Columns: ['x', 'y', 'radius', 'label', 'matching_gt','repeted_idxs']
         fp (pd.DataFrame): Columns: ['x', 'y', 'radius', 'label', 'matching_gt','repeted_idxs']
@@ -397,13 +398,13 @@ def get_tp_fp_fn_center_patch_criteria(
         center = patch_size//2
         circular_mask = np.zeros((patch_size, patch_size), dtype='uint8')
         circular_mask = cv2.circle(
-            circular_mask, center=(center, center),radius=center, color=1, thickness=-1)
+            circular_mask, center=(center, center), radius=center, color=1, thickness=-1)
     detected_labels = set()
     tp_count, fp_count = 0, 0
     for coords in candidates:
         # getting patch coordinates
         patch_x1, patch_x2, patch_y1, patch_y2 = utils.patch_coordinates_from_center(
-            (coords[0], coords[1]), roi_mask.shape, patch_size)
+            (int(coords[0]), int(coords[1])), roi_mask.shape, patch_size)
 
         # getting coordinates of the patch center. Necessary if the patch is
         # in border and shifted
@@ -453,25 +454,30 @@ def get_tp_fp_fn_center_patch_criteria(
         center_x = x1 + w//2
         center_y = y1 + h//2
         radius_aprox = np.maximum(w, h) / 2
-        fn.append((center_x, center_y, radius_aprox))
+        if scores_passed:
+            score = None
+            fn.append((center_x, center_y, radius_aprox, score))
+        else:
+            fn.append((center_x, center_y, radius_aprox))
 
     # Generate the resulting dataframe
-    tp = pd.DataFrame(tp, columns=['x', 'y', 'radius'])
+    colnames = ['x', 'y', 'radius', 'score'] if scores_passed else ['x', 'y', 'radius']
+    tp = pd.DataFrame(tp, columns=colnames)
     tp['label'] = 'TP'
     tp['repeted_idxs'] = repeted_tp
     tp['matching_gt'] = matching_gt
 
-    fp = pd.DataFrame(fp, columns=['x', 'y', 'radius'])
+    fp = pd.DataFrame(fp, columns=colnames)
     fp['label'] = 'FP'
     fp['repeted_idxs'] = np.asarray(repeted_fp) + len(tp)
     fp['matching_gt'] = None
 
-    fn = pd.DataFrame(fn, columns=['x', 'y', 'radius'])
+    fn = pd.DataFrame(fn, columns=colnames)
     fn['label'] = 'FN'
     fn['matching_gt'] = None
     fn['repeted_idxs'] = False
 
-    ignored_candidates = pd.DataFrame(ignored_candidates, columns=['x', 'y', 'radius'])
+    ignored_candidates = pd.DataFrame(ignored_candidates, columns=colnames)
     ignored_candidates['label'] = 'ignored'
     ignored_candidates['matching_gt'] = None
     ignored_candidates['repeted_idxs'] = False

@@ -40,6 +40,7 @@ class INBreast_Dataset_pytorch(INBreast_Dataset):
         normalization: str = 'z_score',
         get_lesion_bboxes: bool = False,
         for_detection_net: bool = False,
+        detection_bbox_size: int = 14,
         **extra
     ):
         super(INBreast_Dataset_pytorch, self).__init__(
@@ -60,6 +61,7 @@ class INBreast_Dataset_pytorch(INBreast_Dataset):
         self.crop_size = crop_size
         self.half_crop = int(self.crop_size // 2)
         self.center_noise = center_noise
+      	self.detection_bbox_size = detection_bbox_size
 
         if patch_images_path is not None:
             self.patch_img_path = patch_images_path/'patches'
@@ -125,13 +127,29 @@ class INBreast_Dataset_pytorch(INBreast_Dataset):
                     [utils.get_center_bbox(bbox[0], bbox[1]) for bbox in sample['lesion_bboxes']])
                 sample['labels'] = np.ones((len(sample['lesion_bboxes']), 1))
             else:
-                sample['lesion_bboxes'] = []
-                sample['lesion_centers'] = []
-                sample['labels'] = np.zeros((len(sample['lesion_bboxes']), 1))
-
+                if self.extract_patches_method == 'all':
+                    raise(Exception('Need non-empty patches for Detection. Check parameters.'))
+                else:
+                    sample['lesion_bboxes'] = []
+                    sample['lesion_centers'] = []
+                    sample['labels'] = np.zeros((len(sample['lesion_bboxes']), 1))
+                    return sample['label'], sample['img'], sample['lesion_bboxes'], \
+                        sample['lesion_centers'], sample['labels']
             if self.extract_patches_method == 'all':
-                return sample['label'], sample['img'], sample['lesion_bboxes'], \
-                    sample['lesion_centers'], sample['labels']
+                # form a target array with coco-formated keys
+                target = {}
+
+                target['boxes'] = [
+                    self.correct_boxes((bbox[0], bbox[1]), mask.shape)
+                    for bbox in sample['lesion_centers']]
+                target['boxes'] = torch.as_tensor(target['boxes'], dtype=torch.float32)                
+                target['labels'] = torch.ones((len(target['boxes']),), dtype=torch.int64)
+                target['image_id'] = torch.as_tensor(self.df['img_id'].iloc[idx])
+                boxes_areas = [(b[3] - b[1])*(b[2] - b[0]) for b in target['boxes']]
+                target['area'] = torch.as_tensor(boxes_areas)
+                # iscrowd=True bboxes are ignored during validation (coco tools definition)
+                target['iscrowd'] = torch.as_tensor([False]*len(target['boxes']))
+                return torch.as_tensor(sample['img']), target
             else:
                 patch_center = self.patch_size // 2
                 if len(sample['lesion_centers']) != 0:
