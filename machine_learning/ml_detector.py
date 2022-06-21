@@ -9,12 +9,12 @@ from general_utils.utils import non_max_supression
 
 class DetectorML:
     """Calcification Detection Model based on Grayscale Morphology"""
-    def __init__(self, cascade_model_path=''):
+    def __init__(self, cascade_model_path):
         """Constructor for the DetectorML class
 
         Args:
-            cascade_model_path (str, optional): Path to trained cascade models
-                trained on all features extracted from GSM detector. Defaults to ''.
+            cascade_model_path (str): Path to trained cascade models
+                trained on all features extracted from GSM detector.
         """
 
         self.detector = MorphologyCalcificationDetection(**GSM_DEFAULT_PARAMS)
