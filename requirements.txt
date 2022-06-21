@@ -14,3 +14,4 @@ tqdm
 xgboost
 transformers
 tensorboard
+pycocotools
