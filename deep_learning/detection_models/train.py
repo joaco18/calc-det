@@ -89,8 +89,9 @@ def train_model(datasets, dataloaders, model, optimizer, scheduler, cfg):
             last_three_losses = last_three_losses[1:]
 
         # print status
-        value = metrics[best_metric_name]
-        message = f'Train Loss: {epoch_loss:.4f}, {best_metric_name}: {value:.4f}'
+        message = \
+            f'Train Loss: {epoch_loss:.4f}, AP_IoU_0.50_all: {metrics["AP_IoU_0.50_all"]:.4f}' \
+            f'AR_IoU_0.50_0.95_all_mdets_100: {metrics["AR_IoU_0.50_0.95_all_mdets_100"]}'
         logging.info(message)
         writer.add_scalar("AP_IoU_0.50_all/val", metrics['AP_IoU_0.50_all'], epoch+1)
         writer.add_scalar(
@@ -136,7 +137,10 @@ def train_model(datasets, dataloaders, model, optimizer, scheduler, cfg):
     message = f'Training complete in {(time_elapsed // 60):.0f}m ' \
         f'{(time_elapsed % 60):.0f}s'
     logging.info(message)
-    logging.info(f'Best val {best_metric_name}: {best_metric:4f}, epoch {best_epoch}')
+    logging.info(
+        f'Best val AP_IoU_0.50_all/val: {metrics["AP_IoU_0.50_all"]:4f},'
+        f' AR_IoU_0.50_0.95_all: {metrics["AR_IoU_0.50_0.95_all_mdets_100"]:4f},'
+        f' epoch {best_epoch}')
 
     # close the tensorboard session
     writer.flush()
