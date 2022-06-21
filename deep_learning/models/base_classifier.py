@@ -26,8 +26,10 @@ class CNNClasssifier:
         if hasattr(self.model, 'fc'):
             n_inputs = self.model.fc.in_features
         else:
-            if 'densenet' in backbone:
-                n_inputs = self.model.classifier.in_features    
+            if ('densenet' in backbone):
+                n_inputs = self.model.classifier.in_features
+            elif ('vgg' in backbone):
+                n_inputs = self.model.classifier[0].in_features
             else:
                 n_inputs = self.model.classifier[1].in_features
 
