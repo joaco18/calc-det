@@ -156,6 +156,7 @@ def get_detection_model_from_checkpoint(model_ckpt: dict, freezed: bool = True):
         box_roi_pool=roi_pooler,
         image_mean=[0., 0., 0.],
         image_std=[1., 1., 1.],
+        box_score_thresh=1e-4
     )
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     model = model.to(device)
