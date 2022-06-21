@@ -62,7 +62,9 @@ def tensorboard_logs(writer, epoch_loss, epoch, metrics, phase, it=False):
     writer.add_scalar(f"Precision/{phase}{it}", metrics['precision'], epoch)
 
 
-def get_model(model_ckpt):
+def get_model_from_checkpoint(model_ckpt: dict):
+    """Uses the config file inside the checkpoint to create the model acordingly and
+    loads the state dict"""
     cfg = model_ckpt['configuration']
     if cfg['model']['backbone'] == 'swin_transformer':
         model = SwinForImageClassification.from_pretrained(
