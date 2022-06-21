@@ -5,6 +5,7 @@ import sys; sys.path.insert(0, str(thispath.parent))
 import cv2
 import torch
 import torchvision
+import logging
 
 import numpy as np
 
@@ -25,6 +26,7 @@ class ClassificationBasedDetector():
         pred_kind: str = 'score',
         norm_kind: str = 'avg',
         post_proc: bool = True,
+        k_size: int = 3,
         patch_size: int = 224,
         stride: int = 25,
         min_breast_fraction_patch: int = None,
@@ -72,60 +74,84 @@ class ClassificationBasedDetector():
         self.iou_threshold = iou_threshold
         self.pred_kind = pred_kind
         self.norm_kind = norm_kind
+        self.k_size = k_size
 
-    def detect(self, img: np.ndarray):
+    def detect(
+        self, img: np.ndarray, raw_saliency_path: Path = None,
+        final_saliency_path: Path = None
+    ):
         """Divides the image in patches, runs classification, joints the results and extracts
         detections out of the saliency map, using the configured treshold and NMS.
         Args:
             img (np.ndarray): Full image to process
+            raw_saliency_path (Path): Path to store raw saliency map
+            final_saliency_path (Path): Path to store normalized postprocessed saliency map
         Returns:
             detections (np.ndarray): [x1, x2, y1, y2, score]
         """
-        # parallelize inference time
         self.img = img
-        crops_dataset = ImgCropsDataset(
-            img=self.img,
-            patch_size=self.patch_size,
-            stride=self.stride,
-            min_breast_fraction_patch=self.min_breast_fraction_patch
-        )
-        crops_dataloader = DataLoader(
-            crops_dataset, batch_size=self.batch_size, shuffle=False, sampler=None,
-            batch_sampler=None, num_workers=4, pin_memory=True, drop_last=False
-        )
-        # get saliency map
-        self.saliency_map = np.zeros(self.img.shape, dtype='float32')
-        counts = np.ones(self.img.shape, dtype='int')
-        for batch in tqdm(crops_dataloader, total=len(crops_dataloader)):
-            inputs = batch['img'].to(self.device)
-            with torch.set_grad_enabled(False):
-                outputs = torch.sigmoid(self.model(inputs).detach())
-                outputs = np.asarray(outputs.flatten().cpu())
-                # binarize if necessary
-                if self.pred_kind == 'binary':
-                    outputs = np.where(outputs >= self.threshold, 1, 0)
-            for k, location in enumerate(batch['location']):
-                [[x1, y1], [x2, y2]] = location
-                counts[y1:y2, x1:x2] += 1
-                self.saliency_map[y1:y2, x1:x2] += outputs[k]
+        # parallelize inference time
+        if (final_saliency_path is None) or (not final_saliency_path.exists()):
+            if (raw_saliency_path is None) or (not raw_saliency_path.exists()):
+                crops_dataset = ImgCropsDataset(
+                    img=self.img,
+                    patch_size=self.patch_size,
+                    stride=self.stride,
+                    min_breast_fraction_patch=self.min_breast_fraction_patch
+                )
+                crops_dataloader = DataLoader(
+                    crops_dataset, batch_size=self.batch_size, shuffle=False, sampler=None,
+                    batch_sampler=None, num_workers=4, pin_memory=True, drop_last=False
+                )
+                # get saliency map
+                self.saliency_map = np.zeros(self.img.shape, dtype='float32')
+                counts = np.ones(self.img.shape, dtype='int')
+                for batch in tqdm(crops_dataloader, total=len(crops_dataloader)):
+                    inputs = batch['img'].to(self.device)
+                    with torch.set_grad_enabled(False):
+                        outputs = torch.sigmoid(self.model(inputs).detach())
+                        outputs = np.asarray(outputs.flatten().cpu())
+                        # binarize if necessary
+                        if self.pred_kind == 'binary':
+                            outputs = np.where(outputs >= self.threshold, 1, 0)
+                    for k, location in enumerate(batch['location']):
+                        [[x1, y1], [x2, y2]] = location
+                        counts[y1:y2, x1:x2] += 1
+                        self.saliency_map[y1:y2, x1:x2] += outputs[k]
 
-        # normalize saliency map
-        if self.norm_kind == 'avg':
-            self.saliency_map = self.saliency_map/counts
-        else:
+                # scale information to consider overlapping
+                if self.norm_kind == 'avg':
+                    self.saliency_map = self.saliency_map/counts
+                else:
+                    self.saliency_map = utils.min_max_norm(
+                        self.saliency_map, 1).astype('float32')
+
+                if raw_saliency_path is not None:
+                    cv2.imwrite(str(raw_saliency_path), self.saliency_map)
+            else:
+                self.saliency_map = cv2.imread(
+                    str(raw_saliency_path), cv2.IMREAD_ANYDEPTH)
+
+            # do post_processing
+            if self.post_proc:
+                sigma = self.k_size // 3
+                self.saliency_map = cv2.GaussianBlur(
+                    self.saliency_map, ksize=(self.k_size, self.k_size),
+                    sigmaX=sigma, sigmaY=sigma)
+
+            # normalize to [0, 1]
             self.saliency_map = utils.min_max_norm(self.saliency_map, 1).astype('float32')
-
-        # do post_processing
-        if self.post_proc:
-            self.saliency_map_adj = utils.adjust_gamma_float(self.saliency_map, 0.5)
-            self.saliency_map = cv2.GaussianBlur(
-                self.saliency_map, ksize=(25, 25), sigmaX=7, sigmaY=7)
+            # adapt threshold if necesary
+            cv2.imwrite(str(final_saliency_path), self.saliency_map)
+        else:
+            self.saliency_map = cv2.imread(str(final_saliency_path), cv2.IMREAD_ANYDEPTH)
 
         # extract detections bboxes
         detections = self.get_detections()
+
         # nms
         if self.nms:
-            detections = self.non_max_supression(detections)
+            detections = self.non_max_supression(detections, self.iou_threshold)
         return detections
 
     def get_detections(self):
@@ -139,28 +165,32 @@ class ClassificationBasedDetector():
             self.saliency_map, footprint=np.ones((self.bbox_size, self.bbox_size)),
             threshold_abs=self.threshold, additional_mask=breast_mask
         )
+        if len(peak_centers) == 0:
+            logging.warning(
+                "The current configuration led to no detections in the image, returning None")
+            return None
         # convert from [row, column] (y,x) to (x,y)
         peak_centers = np.fliplr(peak_centers)
-
         scores = self.saliency_map[peak_centers[:, 1], peak_centers[:, 0]]
         patch_coordinates_from_center = partial(
             utils.patch_coordinates_from_center,
             image_shape=breast_mask.shape, patch_size=self.bbox_size)
         patches_coords = np.array(list(map(patch_coordinates_from_center, peak_centers)))
-        return np.concatenate([patches_coords, scores.reshape(-1, 1)], axis=1)
+        return np.concatenate([peak_centers, patches_coords, scores.reshape(-1, 1)], axis=1)
 
     @staticmethod
-    def non_max_supression(detections: np.ndarray):
+    def non_max_supression(detections: np.ndarray, iou_threshold: float = 0.):
         """Filters the detections bboxes using NMS.
         Args:
-            detections (np.ndarray): [x1, x2, y1, y2, score]
+            detections (np.ndarray): [xc, yc, x1, x2, y1, y2, score]
+            iou_threshold (float): iou threshold value.
         Returns:
-            detections (np.ndarray): [x1, x2, y1, y2, score]
+            detections (np.ndarray): [xc, yc, x1, x2, y1, y2, score]
         """
         bboxes = np.asarray(
-            [detections[:, 0], detections[:, 2], detections[:, 1], detections[:, 3]]).T
+            [detections[:, 2], detections[:, 4], detections[:, 3], detections[:, 5]]).T
 
         bboxes = torch.from_numpy(bboxes).to(torch.float)
-        scores = torch.from_numpy(detections[:, 4]).to(torch.float)
-        indxs = torchvision.ops.nms(bboxes, scores, iou_threshold=0)
+        scores = torch.from_numpy(detections[:, 6]).to(torch.float)
+        indxs = torchvision.ops.nms(bboxes, scores, iou_threshold=iou_threshold)
         return detections[indxs, :]

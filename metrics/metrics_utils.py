@@ -509,8 +509,9 @@ def get_froc_df_of_many_imgs_features(
     """
     # Fill metadata for TP and FP
     df = candidates_df.copy()
-    values = candidates_df.loc[:, 'candidate_coordinates'].values.copy()
-    df.loc[:, ['x', 'y', 'radius']] = np.vstack(values)
+    if 'candidate_coordinates' in candidates_df.columns:
+        values = candidates_df.loc[:, 'candidate_coordinates'].values.copy()
+        df.loc[:, ['x', 'y', 'radius']] = np.vstack(values)
     df.loc[df.label, 'detection_labels'] = 'TP'
     df.loc[~df.label, 'detection_labels'] = 'FP'
     df.loc[:, 'pred_scores'] = predictions

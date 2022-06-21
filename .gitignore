@@ -16,6 +16,8 @@ deep_learning/config.yml
 notebooks/develop_config.ipynb
 notebooks/dev_dcm_masks.ipynb
 notebooks/develop_cropping_strategy.ipynb
+notebooks/develop_our_resnets.ipynb
+deep_learning/detection_models/config.yml
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
