@@ -62,7 +62,7 @@ def tensorboard_logs(writer, epoch_loss, epoch, metrics, phase, it=False):
     writer.add_scalar(f"Precision/{phase}{it}", metrics['precision'], epoch)
 
 
-def get_model_from_checkpoint(model_ckpt: dict):
+def get_model_from_checkpoint(model_ckpt: dict, freezed: bool = True):
     """Uses the config file inside the checkpoint to create the model acordingly and
     loads the state dict"""
     cfg = model_ckpt['configuration']
@@ -73,8 +73,8 @@ def get_model_from_checkpoint(model_ckpt: dict):
             ignore_mismatched_sizes=True)
     elif cfg['model']['backbone'] == 'net2':
         use_middle_act = \
-            cfg['model']['use_middle_activation'] if 'use_middle_activation' \
-                in cfg['model'].keys() else True
+            cfg['model']['use_middle_activation'] if (
+                'use_middle_activation' in cfg['model'].keys()) else True
         if 'bloc_act' in cfg['model'].keys() and (cfg['model']['bloc_act'] is not None):
             block_act = getattr(nn, cfg['model']['bloc_act'])
         else:
@@ -104,8 +104,8 @@ def get_model_from_checkpoint(model_ckpt: dict):
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     model = model.to(device)
-
-    model.load_state_dict(model_ckpt['model_state_dict'])
-    for param in model.parameters():
-        param.requires_grad = False
+    if freezed:
+        model.load_state_dict(model_ckpt['model_state_dict'])
+        for param in model.parameters():
+            param.requires_grad = False
     return model
