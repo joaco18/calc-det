@@ -95,6 +95,18 @@ class INBreast_Dataset_pytorch(INBreast_Dataset):
     def __len__(self):
         return len(self.df)
 
+    def correct_boxes(self, center, image_shape):
+        """ Cropes a bounding box of fixed size around given center
+        Args:
+            center (tuple): (x coordinate, y coordinate)
+            image_shape (tuple): shape of image to crop patches from
+        Returns:
+            x1, y1, x1, y2: coordinates of the patch to crop
+        """
+        x1, x2, y1, y2 = utils.patch_coordinates_from_center(
+            center, image_shape, self.detection_bbox_size)
+        return [x1, y1, x2, y2]
+
     def __getitem__(self, idx):
         sample = {}
         sample["label"] = 1 if self.df['label'].iloc[idx] == 'abnormal' else 0
@@ -138,7 +150,6 @@ class INBreast_Dataset_pytorch(INBreast_Dataset):
             if self.extract_patches_method == 'all':
                 # form a target array with coco-formated keys
                 target = {}
-
                 target['boxes'] = [
                     self.correct_boxes((bbox[0], bbox[1]), mask.shape)
                     for bbox in sample['lesion_centers']]
