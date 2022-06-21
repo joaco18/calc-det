@@ -38,12 +38,21 @@ def load_patch_coords(point_string: str):
     )
 
 
-def z_score_norm(img: np.ndarray, mean: float = None, std: float = None):
-    if (mean is None) and (std is None):
-        mean, std = cv2.meanStdDev(img)
+def z_score_norm(
+    img: np.ndarray, mean: float = None, std: float = None, non_zero_region: bool = False
+):
+    if (mean is None):
+        if non_zero_region:
+            mean = img[img != 0].mean()
+        else:
+            mean = img.mean()
+    if (std is None):
+        if non_zero_region:
+            std = img[img != 0].std()
+        else:
+            std = img.std()
     img = (img - mean) / std
-    # TODO: Decide what to do with the floats
-    return img
+    return img.astype('float32')
 
 
 def min_max_norm(img: np.ndarray, max_val: int = None):

@@ -3,6 +3,7 @@ thispath = Path.cwd().resolve()
 import sys; sys.path.insert(0, str(thispath.parent))
 
 import cv2
+import torch
 import numpy as np
 import pandas as pd
 from typing import List, Tuple
@@ -27,13 +28,20 @@ class INBreast_Dataset_pytorch(INBreast_Dataset):
         delete_previous: bool = True,
         extract_patches_method: str = 'all',
         patch_size: int = 224,
+        crop_size: int = 32,
+        center_noise: int = 10,
         stride: int = 100,
         min_breast_fraction_roi: float = 0.7,
         n_jobs: int = -1,
         cropped_imgs: bool = True,
         ignore_diameter_px: int = 15,
         neg_to_pos_ratio: int = None,
-        balancing_seed: int = 0
+        balancing_seed: int = 0,
+        normalization: str = 'z_score',
+        get_lesion_bboxes: bool = False,
+        for_detection_net: bool = False,
+        detection_bbox_size: int = 14,
+        **extra
     ):
         super(INBreast_Dataset_pytorch, self).__init__(
             imgpath=imgpath, mask_path=mask_path, dfpath=dfpath, lesion_types=lesion_types,
@@ -41,15 +49,26 @@ class INBreast_Dataset_pytorch(INBreast_Dataset):
             extract_patches_method=extract_patches_method, patch_size=patch_size, stride=stride,
             min_breast_fraction_roi=min_breast_fraction_roi, n_jobs=n_jobs, level='rois',
             cropped_imgs=cropped_imgs, ignore_diameter_px=ignore_diameter_px, seed=seed,
-            return_lesions_mask=False, max_lesion_diam_mm=None, use_muscle_mask=False
+            return_lesions_mask=get_lesion_bboxes, max_lesion_diam_mm=None, use_muscle_mask=False
         )
         self.neg_to_pos_ratio = neg_to_pos_ratio
         self.balancing_seed = balancing_seed
         self.total_df = self.df.copy()
+        self.normalization = normalization
+        self.for_detection_net = for_detection_net
+        self.extract_patches_method = extract_patches_method
+        self.patch_size = patch_size
+        self.crop_size = crop_size
+        self.half_crop = int(self.crop_size // 2)
+        self.center_noise = center_noise
+      	self.detection_bbox_size = detection_bbox_size
 
         if patch_images_path is not None:
             self.patch_img_path = patch_images_path/'patches'
             self.patch_mask_path = patch_images_path/'patches_masks'
+
+        if self.for_detection_net:
+            self.discard_negative_patches()
 
     def balance_dataset(self, balancing_seed: int = None):
         n_pos = self.total_df.loc[self.total_df.label == 'abnormal', :].shape[0]
@@ -67,7 +86,11 @@ class INBreast_Dataset_pytorch(INBreast_Dataset):
         ], ignore_index=True)
 
     def update_sample_used(self, balancing_seed: int = None):
-        self.balance_dataset(balancing_seed)
+        if self.neg_to_pos_ratio is not None:
+            self.balance_dataset(balancing_seed)
+
+    def discard_negative_patches(self):
+        self.df = self.total_df.loc[self.total_df.label == 'abnormal', :].copy()
 
     def __len__(self):
         return len(self.df)
@@ -82,18 +105,80 @@ class INBreast_Dataset_pytorch(INBreast_Dataset):
         side = self.df['side'].iloc[idx]
         if side == 'R' and self.level == 'image':
             img = cv2.flip(img, 1)
+
         # Convert into float for better working of pytorch augmentations
-        img = utils.min_max_norm(img, 1).astype('float32')
+        if self.normalization == 'min_max':
+            img = utils.min_max_norm(img, 1).astype('float32')
+        elif self.normalization == 'z_score':
+            img = utils.z_score_norm(img, non_zero_region=True)
 
         # to RGB
         img = np.expand_dims(img, 0)
         img = np.repeat(img, 3, axis=0)
         sample['img'] = img
-        
-        patch_bbox = self.df['patch_bbox'].iloc[idx]
-        if isinstance(patch_bbox, str):
-            patch_bbox = utils.load_patch_coords(patch_bbox)
-        sample["patch_bbox"] = patch_bbox
+
+        if self.for_detection_net or (self.extract_patches_method != 'all'):
+            mask_filename = self.df['mask_filename'].iloc[idx]
+            if mask_filename != 'empty_mask':
+                mask_filename = self.patch_mask_path / mask_filename
+                mask = cv2.imread(str(mask_filename), cv2.IMREAD_ANYDEPTH)
+                sample['lesion_bboxes'] = np.asarray(utils.get_bbox_of_lesions_in_patch(mask))
+                sample['lesion_centers'] = np.asarray(
+                    [utils.get_center_bbox(bbox[0], bbox[1]) for bbox in sample['lesion_bboxes']])
+                sample['labels'] = np.ones((len(sample['lesion_bboxes']), 1))
+            else:
+                if self.extract_patches_method == 'all':
+                    raise(Exception('Need non-empty patches for Detection. Check parameters.'))
+                else:
+                    sample['lesion_bboxes'] = []
+                    sample['lesion_centers'] = []
+                    sample['labels'] = np.zeros((len(sample['lesion_bboxes']), 1))
+                    return sample['label'], sample['img'], sample['lesion_bboxes'], \
+                        sample['lesion_centers'], sample['labels']
+            if self.extract_patches_method == 'all':
+                # form a target array with coco-formated keys
+                target = {}
+
+                target['boxes'] = [
+                    self.correct_boxes((bbox[0], bbox[1]), mask.shape)
+                    for bbox in sample['lesion_centers']]
+                target['boxes'] = torch.as_tensor(target['boxes'], dtype=torch.float32)                
+                target['labels'] = torch.ones((len(target['boxes']),), dtype=torch.int64)
+                target['image_id'] = torch.as_tensor(self.df['img_id'].iloc[idx])
+                boxes_areas = [(b[3] - b[1])*(b[2] - b[0]) for b in target['boxes']]
+                target['area'] = torch.as_tensor(boxes_areas)
+                # iscrowd=True bboxes are ignored during validation (coco tools definition)
+                target['iscrowd'] = torch.as_tensor([False]*len(target['boxes']))
+                return torch.as_tensor(sample['img']), target
+            else:
+                patch_center = self.patch_size // 2
+                if len(sample['lesion_centers']) != 0:
+                    distances = np.asarray([
+                        abs(center[0] - patch_center) + abs(center[1] - patch_center)
+                        for center in sample['lesion_centers']])
+                    sample['lesion_center'] = \
+                        np.asarray(sample['lesion_centers'][np.argmin(distances)], dtype=int)
+                    if sample['label'] == 1:
+                        center = sample['lesion_center']
+                        offset = self.center_noise // 2
+                        center_noise_x = np.random.randint(-offset, offset, dtype=int)
+                        center_noise_y = np.random.randint(-offset, offset, dtype=int)
+                        center[0], center[1] = center[0]+center_noise_x, center[1]+center_noise_y
+                        sample['img'] = sample['img'][
+                            :,
+                            center[1] - self.half_crop: center[1] + self.crop_size - self.half_crop,
+                            center[0] - self.half_crop: center[0] + self.crop_size - self.half_crop]
+                else:
+                    sample['lesion_center'] = np.asanyarray([-1, -1])
+                    center_x = np.random.randint(
+                        self.half_crop+1, high=self.patch_size-self.half_crop+1, dtype=int)
+                    center_y = np.random.randint(
+                        self.half_crop+1, high=self.patch_size-self.half_crop+1, dtype=int)
+                    sample['img'] = sample['img'][
+                        :,
+                        center_y - self.half_crop: center_y + self.crop_size - self.half_crop,
+                        center_x - self.half_crop: center_x + self.crop_size - self.half_crop]
+                del sample['lesion_bboxes'], sample['lesion_centers'], sample['labels']
         return sample
 
 
