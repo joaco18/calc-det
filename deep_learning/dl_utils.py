@@ -1,5 +1,7 @@
 import numpy as np
-from sklearn.metrics import roc_curve, f1_score, roc_auc_score, confusion_matrix, average_precision_score
+from sklearn.metrics import (
+    roc_curve, roc_auc_score, average_precision_score, f1_score, confusion_matrix
+)
 
 
 def sensivity_specifity_cutoff(y_true: np.ndarray, y_score: np.ndarray):
