@@ -285,6 +285,14 @@ def main():
             ignore_mismatched_sizes=True,
         )
     elif cfg['model']['backbone'] == 'net2':
+        use_middle_act = \
+            cfg['model']['use_middle_activation'] if 'use_middle_activation' \
+                in cfg['model'].keys() else True
+        if 'bloc_act' in cfg['model'].keys() and (cfg['model']['bloc_act'] is not None):
+            block_act = getattr(nn, cfg['model']['bloc_act'])
+        else:
+            block_act = None
+
         model = ResNetBased(
             block=cfg['model']['block'],
             replace_stride_with_dilation=cfg['model']['replace_stride_with_dilation'],
@@ -293,7 +301,8 @@ def main():
             downsample_blocks=cfg['model']['n_downsamples'],
             fc_dims=cfg['model']['fc_dims'],
             dropout=cfg['model']['dropout'],
-            use_middle_act=cfg['model']['use_middle_activation']
+            use_middle_act=use_middle_act,
+            block_act=block_act 
         )
     else:
         model = CNNClasssifier(
