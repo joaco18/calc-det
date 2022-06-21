@@ -5,6 +5,9 @@ import sys; sys.path.insert(0, str(thispath.parent))
 import torch
 import numpy as np
 import torch.nn as nn
+import torchvision
+from torchvision.models.detection import FasterRCNN
+from torchvision.models.detection.rpn import AnchorGenerator
 from sklearn.metrics import (
     roc_curve, roc_auc_score, average_precision_score, f1_score, confusion_matrix
 )
@@ -108,4 +111,57 @@ def get_model_from_checkpoint(model_ckpt: dict, freezed: bool = True):
         model.load_state_dict(model_ckpt['model_state_dict'])
         for param in model.parameters():
             param.requires_grad = False
+    return model
+
+
+def get_detection_model_from_checkpoint(model_ckpt: dict, freezed: bool = True):
+    """Uses the config file inside the checkpoint to create the model acordingly and
+    loads the state dict"""
+    cfg = model_ckpt['configuration']
+
+    if cfg['model']['checkpoint_path'] is not None:
+        model_ckpt = torch.load(cfg['model']['checkpoint_path'])
+        model = get_model_from_checkpoint(model_ckpt, cfg['model']['freeze_weights'])
+    else:
+        model = CNNClasssifier(
+            activation=getattr(nn, cfg['model']['activation'])(),
+            dropout=cfg['model']['dropout'],
+            fc_dims=cfg['model']['fc_dims'],
+            freeze_weights=cfg['model']['freeze_weights'],
+            backbone=cfg['model']['backbone'],
+            pretrained=cfg['model']['pretrained'],
+        )
+        model = model.model
+
+    modules = list(model.children())[:-2]      # delete the last fc layers.
+    last_submodule_childs = list(modules[-1][-1].children())
+    for i in range(len(last_submodule_childs)-1, -1, -1):
+        if hasattr(last_submodule_childs[i], 'out_channels'):
+            out_channels = last_submodule_childs[i].out_channels
+            break
+    model_backbone = nn.Sequential(*modules)
+    model_backbone.out_channels = out_channels
+    anchor_generator = AnchorGenerator(
+        sizes=(cfg['model']['anchor_sizes'],),
+        aspect_ratios=(cfg['model']['anchor_ratios'],))
+
+    roi_pooler = torchvision.ops.MultiScaleRoIAlign(
+        featmap_names=['0'], output_size=7, sampling_ratio=2)
+
+    # put the pieces together inside a FasterRCNN model
+    model = FasterRCNN(
+        model_backbone,
+        num_classes=cfg['model']['num_classes'],
+        rpn_anchor_generator=anchor_generator,
+        box_roi_pool=roi_pooler,
+        image_mean=[0., 0., 0.],
+        image_std=[1., 1., 1.],
+    )
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    model = model.to(device)
+    if freezed:
+        model.load_state_dict(model_ckpt['model_state_dict'])
+        for param in model.parameters():
+            param.requires_grad = False
+
     return model
