@@ -56,7 +56,7 @@ class CascadeClassifier:
             raise Exception('Model nor trained nor loaded. Provide a path to the model or perform training') 
         return self.second_model.predict_proba(candidate_features[features_sets[features_set]])[:, 1]
         
-    def fit(self, clf, train_features:pd.DataFrame, features:list[str], sens_threshold:float, kfolds=5, FP2TP_rate=10):
+    def fit(self, clf, train_features:pd.DataFrame, features:list, sens_threshold:float, kfolds=5, FP2TP_rate=10):
         """Trains cascaded models for candidate prediction
 
         Args:

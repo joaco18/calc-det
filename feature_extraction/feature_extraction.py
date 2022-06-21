@@ -35,8 +35,8 @@ GABOR_PARAMS = {'scale': 2, 'orientation': 3,
                 'max_freq': 0.2, 'ksize': (20, 20), 'sigma': 3}
 WAVELET_PARAMS = {'angles': [0, np.pi/4, np.pi/2]}
 
-
-haar_feat_path = Path.cwd().parent / 'data/final_haar_500_feat_selection_gsm.p' #'/home/vzalevskyi/projects/calc-det/data/final_haar_500_feat_selection_gsm.p'
+this_path = Path(__file__).parent.resolve()
+haar_feat_path = this_path.parent / 'data/final_haar_500_feat_selection_gsm.p' #'/home/vzalevskyi/projects/calc-det/data/final_haar_500_feat_selection_gsm.p'
 with open(haar_feat_path, 'rb') as f:
     selection = pickle.load(f)
     
