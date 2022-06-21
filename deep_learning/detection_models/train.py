@@ -92,7 +92,10 @@ def train_model(datasets, dataloaders, model, optimizer, scheduler, cfg):
         value = metrics[best_metric_name]
         message = f'Train Loss: {epoch_loss:.4f}, {best_metric_name}: {value:.4f}'
         logging.info(message)
-        writer.add_scalar(f"{best_metric_name}/val", metrics[best_metric_name], epoch+1)
+        writer.add_scalar("AP_IoU_0.50_all/val", metrics['AP_IoU_0.50_all'], epoch+1)
+        writer.add_scalar(
+            'AR_IoU_0.50_0.95_all_mdets_100/val',
+            metrics['AR_IoU_0.50_0.95_all_mdets_100'], epoch+1)
         writer.add_scalar("Loss/train", epoch_loss, epoch+1)
 
         # save last and best checkpoint
