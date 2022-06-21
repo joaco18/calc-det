@@ -28,6 +28,8 @@ class INBreast_Dataset_pytorch(INBreast_Dataset):
         delete_previous: bool = True,
         extract_patches_method: str = 'all',
         patch_size: int = 224,
+        crop_size: int = 32,
+        center_noise: int = 10,
         stride: int = 100,
         min_breast_fraction_roi: float = 0.7,
         n_jobs: int = -1,
@@ -54,7 +56,12 @@ class INBreast_Dataset_pytorch(INBreast_Dataset):
         self.total_df = self.df.copy()
         self.normalization = normalization
         self.for_detection_net = for_detection_net
-        self.detection_bbox_size = detection_bbox_size
+        self.extract_patches_method = extract_patches_method
+        self.patch_size = patch_size
+        self.crop_size = crop_size
+        self.half_crop = int(self.crop_size // 2)
+        self.center_noise = center_noise
+	self.detection_bbox_size = detection_bbox_size
 
         if patch_images_path is not None:
             self.patch_img_path = patch_images_path/'patches'
@@ -110,50 +117,70 @@ class INBreast_Dataset_pytorch(INBreast_Dataset):
         img = np.repeat(img, 3, axis=0)
         sample['img'] = img
 
-        if not self.for_detection_net:
-            return sample
-        else:
+        if self.for_detection_net or (self.extract_patches_method != 'all'):
             mask_filename = self.df['mask_filename'].iloc[idx]
             if mask_filename != 'empty_mask':
                 mask_filename = self.patch_mask_path / mask_filename
                 mask = cv2.imread(str(mask_filename), cv2.IMREAD_ANYDEPTH)
-                sample['boxes'] = np.asarray(utils.get_bbox_of_lesions_in_patch(mask))
-
-                sample['lesion_centers'] = \
-                    [utils.get_center_bbox(bbox[0], bbox[1]) for bbox in sample['boxes']]
-
+                sample['lesion_bboxes'] = np.asarray(utils.get_bbox_of_lesions_in_patch(mask))
+                sample['lesion_centers'] = np.asarray(
+                    [utils.get_center_bbox(bbox[0], bbox[1]) for bbox in sample['lesion_bboxes']])
+                sample['labels'] = np.ones((len(sample['lesion_bboxes']), 1))
+            else:
+                if self.extract_patches_method == 'all':
+                    raise(Exception('Need non-empty patches for Detection. Check parameters.'))
+                else:
+                    sample['lesion_bboxes'] = []
+                    sample['lesion_centers'] = []
+                    sample['labels'] = np.zeros((len(sample['lesion_bboxes']), 1))
+                    return sample['label'], sample['img'], sample['lesion_bboxes'], \
+                        sample['lesion_centers'], sample['labels']
+            if self.extract_patches_method == 'all':
                 # form a target array with coco-formated keys
                 target = {}
 
-                target['boxes'] = [self.correct_boxes((bbox[0], bbox[1]), mask.shape)  for bbox in sample['lesion_centers']]
-                target['boxes'] = torch.as_tensor(target['boxes'], dtype=torch.float32)
-                
+                target['boxes'] = [
+                    self.correct_boxes((bbox[0], bbox[1]), mask.shape)
+                    for bbox in sample['lesion_centers']]
+                target['boxes'] = torch.as_tensor(target['boxes'], dtype=torch.float32)                
                 target['labels'] = torch.ones((len(target['boxes']),), dtype=torch.int64)
-
                 target['image_id'] = torch.as_tensor(self.df['img_id'].iloc[idx])
-                
                 boxes_areas = [(b[3] - b[1])*(b[2] - b[0]) for b in target['boxes']]
                 target['area'] = torch.as_tensor(boxes_areas)
-                
                 # iscrowd=True bboxes are ignored during validation (coco tools definition)
                 target['iscrowd'] = torch.as_tensor([False]*len(target['boxes']))
+                return torch.as_tensor(sample['img']), target
             else:
-                raise(Exception('Need non-empty patches for Detection. Check parameters.'))
-            return torch.as_tensor(sample['img']), target
+                patch_center = self.patch_size // 2
+                if len(sample['lesion_centers']) != 0:
+                    distances = np.asarray([
+                        abs(center[0] - patch_center) + abs(center[1] - patch_center)
+                        for center in sample['lesion_centers']])
+                    sample['lesion_center'] = \
+                        np.asarray(sample['lesion_centers'][np.argmin(distances)], dtype=int)
+                    if sample['label'] == 1:
+                        center = sample['lesion_center']
+                        offset = self.center_noise // 2
+                        center_noise_x = np.random.randint(-offset, offset, dtype=int)
+                        center_noise_y = np.random.randint(-offset, offset, dtype=int)
+                        center[0], center[1] = center[0]+center_noise_x, center[1]+center_noise_y
+                        sample['img'] = sample['img'][
+                            :,
+                            center[1] - self.half_crop: center[1] + self.crop_size - self.half_crop,
+                            center[0] - self.half_crop: center[0] + self.crop_size - self.half_crop]
+                else:
+                    sample['lesion_center'] = np.asanyarray([-1, -1])
+                    center_x = np.random.randint(
+                        self.half_crop+1, high=self.patch_size-self.half_crop+1, dtype=int)
+                    center_y = np.random.randint(
+                        self.half_crop+1, high=self.patch_size-self.half_crop+1, dtype=int)
+                    sample['img'] = sample['img'][
+                        :,
+                        center_y - self.half_crop: center_y + self.crop_size - self.half_crop,
+                        center_x - self.half_crop: center_x + self.crop_size - self.half_crop]
+                del sample['lesion_bboxes'], sample['lesion_centers'], sample['labels']
+        return sample
 
-    def correct_boxes(self, center, image_shape):
-        """ Cropes a bounding box of fixed size around given center
-        Args:
-            center (tuple): (x coordinate, y coordinate)
-            image_shape (tuple): shape of image to crop patches from
-        Returns:
-            x1, y1, x1, y2: coordinates of the patch to crop
-        """
-        # TODO: EXTRACTED TO A SEPERATE FUNCTION IN CASE WE WANT TO APPLY
-        # MORE LOGIC TO THIS CORRECTION (DIFFERENT BOX SIZE BASED ON THE TYPE OF LESION
-        # LABEL /pixel-label/not pixel)
-        x1, x2, y1, y2 = utils.patch_coordinates_from_center(center, image_shape, self.detection_bbox_size)
-        return [x1, y1, x2, y2]
 
 class ImgCropsDataset():
     """Dataset of patches obtained from a single image"""
