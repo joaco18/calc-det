@@ -61,7 +61,7 @@ class INBreast_Dataset_pytorch(INBreast_Dataset):
         self.crop_size = crop_size
         self.half_crop = int(self.crop_size // 2)
         self.center_noise = center_noise
-	self.detection_bbox_size = detection_bbox_size
+      	self.detection_bbox_size = detection_bbox_size
 
         if patch_images_path is not None:
             self.patch_img_path = patch_images_path/'patches'
