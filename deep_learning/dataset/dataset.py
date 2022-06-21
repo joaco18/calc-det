@@ -155,7 +155,7 @@ class INBreast_Dataset_pytorch(INBreast_Dataset):
                     for bbox in sample['lesion_centers']]
                 target['boxes'] = torch.as_tensor(target['boxes'], dtype=torch.float32)                
                 target['labels'] = torch.ones((len(target['boxes']),), dtype=torch.int64)
-                target['image_id'] = torch.as_tensor(self.df['img_id'].iloc[idx])
+                target['image_id'] = torch.as_tensor([idx], dtype=torch.int64)
                 boxes_areas = [(b[3] - b[1])*(b[2] - b[0]) for b in target['boxes']]
                 target['area'] = torch.as_tensor(boxes_areas)
                 # iscrowd=True bboxes are ignored during validation (coco tools definition)
