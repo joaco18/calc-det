@@ -198,7 +198,8 @@ class ImgCropsDataset():
         img: np.ndarray,
         patch_size: int = 224,
         stride: int = 100,
-        min_breast_fraction_patch: float = None
+        min_breast_fraction_patch: float = None,
+        normalization: str = 'z_score'
     ):
         """
         Args:
@@ -212,6 +213,7 @@ class ImgCropsDataset():
         self.patch_size = patch_size
         self.stride = stride
         self.min_breast_frac = min_breast_fraction_patch
+        self.normalization = normalization
 
         # extract patches equally from image and the mask
         img = padd_image(img, self.patch_size)
@@ -241,7 +243,10 @@ class ImgCropsDataset():
     def __getitem__(self, idx):
         img = self.image_patches[idx, :, :]
         if img.any():
-            img = utils.min_max_norm(img, 1).astype('float32')
+            if self.normalization == 'min_max':
+                img = utils.min_max_norm(img, 1).astype('float32')
+            elif self.normalization == 'z_score':
+                img = utils.z_score_norm(img, non_zero_region=True)
         else:
             img = img.astype('float32')
 
