@@ -2,12 +2,12 @@ import math
 from typing import List
 
 import cv2
-import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
 from feature_extraction.haar_features.haar_modules import Feature
+from functools import partial
 from matplotlib.lines import Line2D
 from metrics.metrics_utils import get_tp_fp_fn_center_patch_criteria
 from scipy.ndimage.morphology import binary_fill_holes
@@ -247,6 +247,46 @@ def plot_bootstrap_froc(
         plt.show()
 
 
+def plot_several_frocs(
+    data: dict, ax: int = None, title: str = None, cut_on_50fpi: bool = True
+):
+    """Plot FROC curve
+    Args:
+        data (Dict[dict]):
+            {
+              'exp1':{
+                'tprs': np.ndarray,
+                'fpis': np.ndarray,
+                'ths': np.ndarray
+              }
+            }
+        ax (bool, optional): Whether to plot the figure in the ax of another plot.
+            Defaults to None.
+        title (str, optional): Optional title to include in the figure
+        cut_on_50fpi (bool): whether to cut the froc plot at 50fpi. Defaults to True
+    """
+    ax_ = ax
+    if ax_ is None:
+        f, ax = plt.subplots(1, 1, figsize=(8, 8))
+    ax.set_xlabel('FPpI')
+    ax.set_ylabel('TPR')
+    if title is not None:
+        ax.set_title(title)
+    else:
+        ax.set_title('FROC curve')
+    for k, (label, data_) in enumerate(data.items()):
+        fpis = np.asarray(data_['fpis'])
+        tprs = data_['tprs']
+        ax.plot(fpis, tprs, c=cmap(k), label=f"{label} AUC: {auc(fpis/fpis.max(), tprs):.4f}")
+        ax.set_ylim((0, 1))
+        if cut_on_50fpi:
+            ax.set_xlim(-0.01, 50)
+    ax.legend()
+    sns.despine()
+    if ax_ is None:
+        plt.show()
+
+
 def draw_our_haar_like_features(
     image: np.ndarray, haar_feature: Feature, alpha: float = 0.5,
     rot: bool = False
@@ -361,66 +401,84 @@ def plot_detections(
             plt.show()
 
 
-
-
-def plot_candidates_rois(image, mask, candidates, conf_thr=0.1, k=10):
-    """Plots labels and plots given candidates on an image
-
+def add_detections_overlay(
+    image: np.ndarray, candidates: pd.DataFrame, mask: np.ndarray = None,
+    conf_thr: float = 0.1, k: int = 10, need_labeling: bool = True,
+):
+    """Labels the candidates and plots them accordingly over the provided image
     Args:
         image (np.ndarray): Image to plot the results
-        mask (np.ndarray): image lesion mask used for candidate labelling
-        candidates (pd.DataFrame): candidates metadata; has to have columns:
-            candidate_coordinates (list): [x, y, radius] of the detected candidate
-            patch_coordinates (tuple(tuple)): ((x1, x2), (y1, y2)) coordinates of a patch around a candidate
-            confidence (float): confidences of each candidate
+        candidates (pd.DataFrame):
+            if labeling is needed:
+                [x, y, radius, score]
+            if labeling is not needed:
+                [x, y, radius, score, label, 'matching_gt','repeted_idxs']
+        mask (np.ndarray, optional):
+            image lesion mask used for candidate labelling, only needed if
+            'need_labeling' == True
         conf_thr (float, optional): final threshold to select candidates.
             Only those with confidence higher will be considered for labelling and
             display. Defaults to 0.1.
         k (int, optional): increase in the size of the plotted bboxes.
             Plotted bboxe will have side + k by side + k size. Defaults to 10.
-
     Returns:
-        np.ndarray: image with plotted labelled candidates
+        np.ndarray: image with plotted labelled candidates (BGR)
     """
+    colors_code = {
+        'TP': (0, 255, 0),
+        'FP': (0, 0, 255),
+        'FN': (255, 0, 0)
+    }
 
     # label candidates
-    tp, fp, fn, ignored_candidates = get_tp_fp_fn_center_patch_criteria(
-        np.stack(candidates.candidate_coordinates.values).astype(int), mask, None, 14, True)
+    if need_labeling:
+        tp, fp, fn, ignored_candidates = get_tp_fp_fn_center_patch_criteria(
+            candidates, mask, None, patch_size=14, use_euclidean_dist=True, scores_passed=True)
+        candidates = pd.DataFrame()
+        for frame in [tp, fp, fn]:
+            candidates = pd.concat([candidates, frame])
+    candidates = candidates[['x', 'y', 'score', 'label']]
 
-    # perform matching between labeld tp/fp and detected candidates
-
-    candidates['candidate_coordinates_str'] = candidates.candidate_coordinates.astype(
-        str)
-    candidates = candidates.set_index('candidate_coordinates_str')
-    candidates['label'] = False
-    for cidx, c in tp.iterrows():
-        candidates.loc[f'[{c["x"]}, {c["y"]}, {c["radius"]}]', 'label'] = True
+    # adjust labels based on confidence threshold
+    new_fn_position = (candidates.label == 'TP') & (candidates.score < conf_thr)
+    candidates.loc[new_fn_position, 'label'] = 'FN'
+    detections_to_drop = ((candidates.label != 'FN') & (candidates.score < conf_thr))
+    candidates = candidates.loc[~detections_to_drop, :]
 
     # format candidate coordinates to plotting format
-    candidates['plot_bboxes'] = [[x[1][0], x[1][1], x[0][0], x[0][1], candidates.confidence.values[xidx]]
-                                 for xidx, x in enumerate(candidates.patch_coordinates.values)]
-    fn_bboxes = pd.DataFrame([fn['x'] - fn['radius'], fn['x'] + fn['radius'], fn['y'] -
-                             fn['radius'], fn['y'] + fn['radius'], pd.Series([-1]*len(fn))]).T.values
+    get_bbox_from_center = partial(
+        utils.patch_coordinates_from_center, image_shape=image.shape, patch_size=14+k)
+    centers_it = zip(candidates['x'].values, candidates['y'].values)
+    bbox_coordinates = [get_bbox_from_center(center) for center in centers_it]
+    candidates[['x1', 'x2', 'y1', 'y2']] = bbox_coordinates
+    candidates.drop(columns=['x', 'y'], inplace=True)
 
-    # mark as FN detected candidates with confidence < conf_thr
-    if len(candidates[(candidates.label) & (candidates.confidence < conf_thr)]) > 0:
-        fn_bboxes = np.vstack([fn_bboxes, np.stack(candidates[(candidates.label) & (
-            candidates.confidence < conf_thr)].plot_bboxes.values)])
+    # convert the image to rgb if necessary
+    if len(image.shape) < 3:
+        image = utils.min_max_norm(image, 255).astype('uint8')
+        image = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
 
-    image = plot_detections(candidates[(candidates.label) & (
-        candidates.confidence >= conf_thr)].plot_bboxes, image, k=k, color=(0, 255, 0), return_image=True)
-    image = plot_detections(candidates[(~candidates.label) & (
-        candidates.confidence >= conf_thr)].plot_bboxes, image, k=k, color=(0, 0, 255), return_image=True)
-    image = plot_detections(fn_bboxes, image, k=k,
-                            color=(255, 0, 0), return_image=True)
+    # overlay bboxes
+    for idx, [score, label, x1, x2, y1, y2] in candidates.iterrows():
+        tl = (int(x1), int(y1))
+        br = (int(x2), int(y2))
+        image = cv2.rectangle(image, tl, br, colors_code[label], 2)
+        if label == 'FN':
+            bbox_tag = '-1' if score is None else f'{score:.3f}'
+        else:
+            bbox_tag = f'{score:.3f}'
+        y = tl[1]-15 if (tl[1]-15) > 15 else tl[1]+15
+        image = cv2.putText(
+            image, bbox_tag, (int(x1), int(y)),
+            cv2.FONT_HERSHEY_SIMPLEX, 1, colors_code[label], 2)
 
-    image = cv2.putText(
-        image, 'TP', (image.shape[1]-150, 100), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-    image = cv2.putText(
-        image, 'FP', (image.shape[1]-150, 200), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-    image = cv2.putText(image, 'FN (-1 not detected)',
-                        (image.shape[1]-400, 300), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
-    image = cv2.putText(image, 'FN (* detected)',
-                        (image.shape[1]-300, 400), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
+    image = cv2.putText(image, 'TP', (image.shape[1]-150, 100),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+    image = cv2.putText(image, 'FP', (image.shape[1]-150, 200),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+    image = cv2.putText(image, 'FN (-1 not detected)', (image.shape[1]-400, 300),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
+    image = cv2.putText(image, 'FN (* detected)', (image.shape[1]-300, 400),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
 
     return image
