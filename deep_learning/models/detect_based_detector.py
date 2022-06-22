@@ -24,7 +24,6 @@ class DetectionBasedDetector():
         bbox_size: int = 14,
         device: str = 'cpu',
         iou_threshold: float = 0.5,
-        normalization: str = 'z_score'
     ):
         """
         Args:
@@ -40,8 +39,6 @@ class DetectionBasedDetector():
             bbox_size (int, optional): Size of the detection enclosing. Defaults to 14.
             device (str, optional): Defaults to 'cpu'.
             iou_threshold (float, optional): IoU Threshold to be used in NMS. Defaults to 0.5
-            normalization (str, optional): Which normalization to apply to patches.
-                Defaults to z_score
         """
         self.model_chkp = model_chkp
         self.model = dl_utils.get_detection_model_from_checkpoint(model_chkp, True).eval()
@@ -52,7 +49,7 @@ class DetectionBasedDetector():
         self.bbox_size = bbox_size
         self.device = device
         self.iou_threshold = iou_threshold
-        self.normalization = normalization
+        self.normalization = model_chkp['configuration']['dataset']['normalization']
 
     def detect(self, img: np.ndarray):
         """Divides the image in patches, runs detection and applied over it NMS.
