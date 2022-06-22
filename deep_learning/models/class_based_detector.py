@@ -33,6 +33,7 @@ best_models = {
         'stride': 8,
         'nms': True,
         'iou_threshold': 1,
+        'normalization': 'z_score',
         'results_path': '/content/drive/MyDrive/calcification_detection/detections_dl/16_net2_07'
     },
     32: {
@@ -48,6 +49,7 @@ best_models = {
         'stride': 8,
         'nms': True,
         'iou_threshold': 1,
+        'normalization': 'z_score',
         'results_path': '/content/drive/MyDrive/calcification_detection/detections_dl/32_net2_05'
     },
     64: {
@@ -63,6 +65,7 @@ best_models = {
         'stride': 12,
         'nms': True,
         'iou_threshold': 1,
+        'normalization': 'z_score',
         'results_path': '/content/drive/MyDrive/calcification_detection/detections_dl/64_net2_03'
     },
     224: {
@@ -78,6 +81,7 @@ best_models = {
         'stride': 12,
         'nms': True,
         'iou_threshold': 1,
+        'normalization': 'z_score',
         'results_path':
             '/content/drive/MyDrive/calcification_detection/detections_dl/224_resnet50_05.pt'
     }
@@ -131,6 +135,7 @@ class ClassificationBasedDetector():
         nms: bool = True,
         iou_threshold: float = 1,
         in_multiscale: bool = False,
+        normalization: str = 'z_score',
         **kwargs
     ):
         """
@@ -160,6 +165,8 @@ class ClassificationBasedDetector():
             iou_threshold (float, optional): IoU Threshold to be used in NMS. Defaults to 1.
             in_multiscale (bool, optional): Whether the class is used in multiscale case.
                 Defaults to False
+            normalization (str, optional): Which normalization to apply to patches.
+                Defaults to z_score
         """
         self.model = model
         self.threshold = threshold
@@ -176,6 +183,7 @@ class ClassificationBasedDetector():
         self.norm_kind = norm_kind
         self.k_size = k_size
         self.in_multiscale = in_multiscale
+        self.normalization = normalization
 
     def detect(
         self, img: np.ndarray, raw_saliency_path: Path = None,
@@ -189,7 +197,7 @@ class ClassificationBasedDetector():
             final_saliency_path (Path): Path to store normalized postprocessed saliency map
             store (bool): Whether to store the saliency map images.
         Returns:
-            detections (np.ndarray): [x1, x2, y1, y2, score]
+            detections (np.ndarray): [xc, yc, x1, x2, y1, y2, score]
         """
         self.img = img
         # parallelize inference time
@@ -199,7 +207,8 @@ class ClassificationBasedDetector():
                     img=self.img,
                     patch_size=self.patch_size,
                     stride=self.stride,
-                    min_breast_fraction_patch=self.min_breast_fraction_patch
+                    min_breast_fraction_patch=self.min_breast_fraction_patch,
+                    normalization=self.normalization
                 )
                 crops_dataloader = DataLoader(
                     crops_dataset, batch_size=self.batch_size, shuffle=False, sampler=None,
@@ -278,7 +287,8 @@ class MultiScaleClassificationBasedDetector():
             threshold (float, optional): Threshold to binarize predictions. Defaults to 0.
             nms (bool, optional): Whether to do nms or not. Defaults to True
             iou_threshold (float, optional): IoU Threshold to be used in NMS. Defaults to 1.
-            merge_type: Whether to combine the saliency maps with 'max' or 'mean' operation.
+            merge_type (str, optional): Whether to combine the saliency maps with 'max' or 
+                'mean' operation. Defaults to 'mean'.
         """
         self.bbox_size = bbox_size
         self.threshold = threshold
