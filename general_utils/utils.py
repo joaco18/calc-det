@@ -389,6 +389,7 @@ def adjust_bbox_to_fit(img_shape: tuple, bbox: tuple, k: int):
     br = (int(x2), int(y2))
     return tl, br
 
+
 def non_max_supression(detections: np.ndarray, iou_threshold=0.5, return_indexes=False):
     """Filters the detections bboxes using NMS.
     Args:
@@ -402,7 +403,7 @@ def non_max_supression(detections: np.ndarray, iou_threshold=0.5, return_indexes
     bboxes = torch.from_numpy(bboxes).to(torch.float)
     scores = torch.from_numpy(detections[:, 4]).to(torch.float)
     indxs = torchvision.ops.nms(bboxes, scores, iou_threshold=iou_threshold)
-    
+
     if return_indexes:
         return indxs
     else:
