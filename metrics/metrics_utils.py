@@ -623,3 +623,19 @@ def non_maximum_suppression_w_labels(froc_df: pd.DataFrame):
     filtered_froc_df = pd.concat(filtered_froc_df, axis=0, ignore_index=True)
 
     return filtered_froc_df
+
+
+def best_th_froc_curve(tprs: np.ndarray, fppis: np.ndarray, thresholds: np.ndarray):
+    """Gets the best compromise threshold based on froc curve (top left point)
+    Args:
+        tprs (np.ndarray): tpr coming from froc curve function
+        fppis (np.ndarray): fppi coming from froc curve function
+        thresholds (np.ndarray): thresholds coming from froc curve function
+    Returns:
+        th, tpr, fppi
+    """
+    idx = np.argmax(tprs - fppis/fppis.max())
+    th = thresholds[idx]
+    tpr = tprs[idx]
+    fppi = fppis[idx]
+    return th, tpr, fppi
