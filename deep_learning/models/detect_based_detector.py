@@ -4,14 +4,13 @@ thispath = Path.cwd().resolve()
 import sys; sys.path.insert(0, str(thispath.parent))
 
 import torch
-import torchvision
 
 import deep_learning.dl_utils as dl_utils
 import numpy as np
 
 from torch.utils.data import DataLoader
 from deep_learning.dataset.dataset import ImgCropsDataset
-
+import general_utils.utils as utils
 
 class DetectionBasedDetector():
     """Obtain detections using a classification model using it in patches"""
@@ -24,7 +23,8 @@ class DetectionBasedDetector():
         batch_size: int = 24,
         bbox_size: int = 14,
         device: str = 'cpu',
-        iou_threshold: float = 0.5
+        iou_threshold: float = 0.5,
+        normalization: str = 'z_score'
     ):
         """
         Args:
@@ -40,6 +40,8 @@ class DetectionBasedDetector():
             bbox_size (int, optional): Size of the detection enclosing. Defaults to 14.
             device (str, optional): Defaults to 'cpu'.
             iou_threshold (float, optional): IoU Threshold to be used in NMS. Defaults to 0.5
+            normalization (str, optional): Which normalization to apply to patches.
+                Defaults to z_score
         """
         self.model_chkp = model_chkp
         self.model = dl_utils.get_detection_model_from_checkpoint(model_chkp, True).eval()
@@ -50,6 +52,7 @@ class DetectionBasedDetector():
         self.bbox_size = bbox_size
         self.device = device
         self.iou_threshold = iou_threshold
+        self.normalization = normalization
 
     def detect(self, img: np.ndarray):
         """Divides the image in patches, runs detection and applied over it NMS.
@@ -63,7 +66,8 @@ class DetectionBasedDetector():
             img=self.img,
             patch_size=self.patch_size,
             stride=self.stride,
-            min_breast_fraction_patch=self.min_breast_fraction_patch
+            min_breast_fraction_patch=self.min_breast_fraction_patch,
+            normalization=self.normalization
         )
         crops_dataloader = DataLoader(
             crops_dataset, batch_size=self.batch_size, shuffle=False, sampler=None,
@@ -71,13 +75,13 @@ class DetectionBasedDetector():
         )
 
         predictions = []
+        img_crops_locs = []
         for batch in crops_dataloader:
             inputs = batch['img'].to(self.device)
+            img_crops_locs.extend(list(batch['location'].numpy()))
             with torch.set_grad_enabled(False):
                 outputs = self.model(inputs)
                 predictions.extend(outputs)
-
-        img_crops_locs = [x['location'] for x in crops_dataset]
 
         # go from patch coordinate frame to full image coordinate frame and
         # match a score to every bbox
@@ -85,8 +89,12 @@ class DetectionBasedDetector():
             [self.rescale_prediced_bboxes(x, y) for x, y in zip(predictions, img_crops_locs)
                 if self.rescale_prediced_bboxes(x, y)])
 
+        # include the centers in the predictions to later compute metrics
+        centers = utils.get_center_bboxes([((x[0], x[2]), (x[1], x[3])) for x in detections])
+        detections = np.concatenate([centers, detections], axis=1)
+
         # perform NMS to avoid duplicated detections over the overlapped regions
-        detections = self.non_max_supression(detections, self.iou_threshold)
+        detections = dl_utils.non_max_supression(detections, 0.5)
 
         return detections
 
@@ -98,20 +106,3 @@ class DetectionBasedDetector():
             bbox_pred['scores'][xidx].cpu()
         ] for xidx, x in enumerate(bbox_pred['boxes']) if len(bbox_pred['boxes'])]
         return new_boxes_wradius
-
-    @staticmethod
-    def non_max_supression(detections: np.ndarray, iou_threshold: float = 0.):
-        """Filters the detections bboxes using NMS.
-        Args:
-            detections (np.ndarray): [x1, x2, y1, y2, score]
-            iou_threshold (float): iou threshold value.
-        Returns:
-            detections (np.ndarray): [x1, x2, y1, y2, score]
-        """
-        bboxes = np.asarray(
-            [detections[:, 0], detections[:, 2], detections[:, 1], detections[:, 3]]).T
-
-        bboxes = torch.from_numpy(bboxes).to(torch.float)
-        scores = torch.from_numpy(detections[:, 4]).to(torch.float)
-        indxs = torchvision.ops.nms(bboxes, scores, iou_threshold=iou_threshold)
-        return detections[indxs, :]
