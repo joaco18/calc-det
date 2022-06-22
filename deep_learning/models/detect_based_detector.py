@@ -1,26 +1,27 @@
 from pathlib import Path
+
 thispath = Path.cwd().resolve()
 import sys; sys.path.insert(0, str(thispath.parent))
 
-import cv2
-import torch
-import torchvision
-
-import numpy as np
-
-from tqdm import tqdm
-from torch.utils.data import DataLoader
 from functools import partial
 
+import cv2
+import deep_learning.dl_utils as dl_utils
 import general_utils.utils as utils
+import numpy as np
+import torch
+import torchvision
 from deep_learning.dataset.dataset import ImgCropsDataset
+from torch.utils.data import DataLoader
+from tqdm import tqdm
 
 
 class DetectionBasedDetector():
     """Obtain detections using a classification model using it in patches"""
     def __init__(
         self,
-        model,
+        model_chkp,
+        freezed: bool = True,
         patch_size: int = 224,
         stride: int = 200,
         min_breast_fraction_patch: int = None,
@@ -32,7 +33,9 @@ class DetectionBasedDetector():
     ):
         """
         Args:
-            model (_type_): Trained classification model from pytorch.
+            model_chkp (dict): Trained FasterRCNN model checkpoint dict.
+                (loaded for the best model with the name  in format *{best_metric_name}.pt)
+            freezed (bool, optional): Wheather to freeze models layers or no. Defaults to True.
             patch_size (int, optional): Size of the input to the network. Defaults to 224.
             stride (int, optional): Stride to use when obtaining patches from the imge.
                 Defaults to 25.
@@ -45,7 +48,9 @@ class DetectionBasedDetector():
             nms (bool, optional): Whether to perform NMS or not. Defaults to True.
             iou_threshold (float, optional): IoU Threshold to be used in NMS. Defaults to 0.
         """
-        self.model = model
+        self.model_chkp = model_chkp
+        self.freezed = freezed
+        self.model = dl_utils.get_detection_model_from_checkpoint(model_chkp, self.freezed).eval()
         self.patch_size = patch_size
         self.stride = stride
         self.min_breast_fraction_patch = min_breast_fraction_patch
@@ -55,7 +60,7 @@ class DetectionBasedDetector():
         self.nms = nms
         self.iou_threshold = iou_threshold
 
-
+        
     def detect(self, img: np.ndarray):
         """Divides the image in patches, runs detection and applied over it NMS.
         Args:
@@ -87,30 +92,12 @@ class DetectionBasedDetector():
         
         # go from patch coordinate frame to full image coordinate frame and 
         # match a score to every bbox
+        # NMS of predicted candidates bboxes is done internally in the model
         detections = np.concatenate([self.rescale_prediced_bboxes(x,y) for x,y in zip(predictions, img_crops_locs) if self.rescale_prediced_bboxes(x,y)])
 
-        # nms
-        if self.nms:
-            detections = self.non_max_supression(detections)
         return detections
 
     @staticmethod
     def rescale_prediced_bboxes(bbox_pred, patch_coords):
         new_boxes_wradius = [[int(x[0] + patch_coords[0][0]), int(x[2] + patch_coords[0][0]), int(x[1] + patch_coords[0][1]), int(x[3] + patch_coords[0][1]), bbox_pred['scores'][xidx].cpu()] for xidx, x in enumerate(bbox_pred['boxes']) if len(bbox_pred['boxes'])]
         return new_boxes_wradius
-    
-    @staticmethod
-    def non_max_supression(detections: np.ndarray):
-        """Filters the detections bboxes using NMS.
-        Args:
-            detections (np.ndarray): [x1, x2, y1, y2, score]
-        Returns:
-            detections (np.ndarray): [x1, x2, y1, y2, score]
-        """
-        bboxes = np.asarray(
-            [detections[:, 0], detections[:, 2], detections[:, 1], detections[:, 3]]).T
-
-        bboxes = torch.from_numpy(bboxes).to(torch.float)
-        scores = torch.from_numpy(detections[:, 4]).to(torch.float)
-        indxs = torchvision.ops.nms(bboxes, scores, iou_threshold=0)
-        return detections[indxs, :]

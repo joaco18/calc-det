@@ -1,20 +1,19 @@
-from pathlib import Path
-thispath = Path.cwd().resolve()
-import sys; sys.path.insert(0, str(thispath.parent))
-
-import torch
-import numpy as np
-import torch.nn as nn
-import torchvision
-from torchvision.models.detection import FasterRCNN
-from torchvision.models.detection.rpn import AnchorGenerator
+import sys
+from deep_learning.models.resnet_based_classifier import ResNetBased
+from deep_learning.models.base_classifier import CNNClasssifier
+from transformers import SwinForImageClassification
 from sklearn.metrics import (
     roc_curve, roc_auc_score, average_precision_score, f1_score, confusion_matrix
 )
-from transformers import SwinForImageClassification
-
-from deep_learning.models.base_classifier import CNNClasssifier
-from deep_learning.models.resnet_based_classifier import ResNetBased
+from torchvision.models.detection.rpn import AnchorGenerator
+from torchvision.models.detection import FasterRCNN
+import torchvision
+import torch.nn as nn
+import numpy as np
+import torch
+from pathlib import Path
+thispath = Path.cwd().resolve()
+sys.path.insert(0, str(thispath.parent))
 
 
 def sensivity_specifity_cutoff(y_true: np.ndarray, y_score: np.ndarray):
@@ -60,8 +59,10 @@ def tensorboard_logs(writer, epoch_loss, epoch, metrics, phase, it=False):
     writer.add_scalar(f"F1_score/{phase}{it}", metrics['f1_score'], epoch)
     writer.add_scalar(f"Auroc/{phase}{it}", metrics['auroc'], epoch)
     writer.add_scalar(f"AvgPR/{phase}{it}", metrics['avgpr'], epoch)
-    writer.add_scalar(f"Sensitivity/{phase}{it}", metrics['sensitivity'], epoch)
-    writer.add_scalar(f"Specificity/{phase}{it}", metrics['specificity'], epoch)
+    writer.add_scalar(f"Sensitivity/{phase}{it}",
+                      metrics['sensitivity'], epoch)
+    writer.add_scalar(f"Specificity/{phase}{it}",
+                      metrics['specificity'], epoch)
     writer.add_scalar(f"Precision/{phase}{it}", metrics['precision'], epoch)
 
 
@@ -107,8 +108,8 @@ def get_model_from_checkpoint(model_ckpt: dict, freezed: bool = True):
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     model = model.to(device)
+    model.load_state_dict(model_ckpt['model_state_dict'])
     if freezed:
-        model.load_state_dict(model_ckpt['model_state_dict'])
         for param in model.parameters():
             param.requires_grad = False
     return model
@@ -121,7 +122,8 @@ def get_detection_model_from_checkpoint(model_ckpt: dict, freezed: bool = True):
 
     if cfg['model']['checkpoint_path'] is not None:
         model_ckpt = torch.load(cfg['model']['checkpoint_path'])
-        model = get_model_from_checkpoint(model_ckpt, cfg['model']['freeze_weights'])
+        model = get_model_from_checkpoint(
+            model_ckpt, cfg['model']['freeze_weights'])
     else:
         model = CNNClasssifier(
             activation=getattr(nn, cfg['model']['activation'])(),
@@ -133,12 +135,22 @@ def get_detection_model_from_checkpoint(model_ckpt: dict, freezed: bool = True):
         )
         model = model.model
 
-    modules = list(model.children())[:-2]      # delete the last fc layers.
+    # delete the last fc layers depending on the backbone
+    if 'densenet' in cfg['model']['backbone']:
+        modules = list(model.children())[:-1]
+    else:
+        modules = list(model.children())[:-2]
+
     last_submodule_childs = list(modules[-1][-1].children())
     for i in range(len(last_submodule_childs)-1, -1, -1):
         if hasattr(last_submodule_childs[i], 'out_channels'):
             out_channels = last_submodule_childs[i].out_channels
             break
+    
+    # densenet blocks don't have out_channels attribute
+    if 'densenet121' in cfg['model']['backbone']:
+        out_channels = 1024
+        
     model_backbone = nn.Sequential(*modules)
     model_backbone.out_channels = out_channels
     anchor_generator = AnchorGenerator(
@@ -160,8 +172,8 @@ def get_detection_model_from_checkpoint(model_ckpt: dict, freezed: bool = True):
     )
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     model = model.to(device)
+    model.load_state_dict(model_ckpt['model_state_dict'], False)
     if freezed:
-        model.load_state_dict(model_ckpt['model_state_dict'])
         for param in model.parameters():
             param.requires_grad = False
 
