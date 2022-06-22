@@ -4,6 +4,7 @@ thispath = Path.cwd().resolve()
 import sys; sys.path.insert(0, str(thispath.parent))
 
 import torch
+import torchvision
 
 import deep_learning.dl_utils as dl_utils
 import numpy as np
@@ -85,8 +86,7 @@ class DetectionBasedDetector():
                 if self.rescale_prediced_bboxes(x, y)])
 
         # perform NMS to avoid duplicated detections over the overlapped regions
-        print(detections.shape)
-        detections = dl_utils.non_max_supression(detections, self.iou_threshold)
+        detections = self.non_max_supression(detections, self.iou_threshold)
 
         return detections
 
@@ -98,3 +98,20 @@ class DetectionBasedDetector():
             bbox_pred['scores'][xidx].cpu()
         ] for xidx, x in enumerate(bbox_pred['boxes']) if len(bbox_pred['boxes'])]
         return new_boxes_wradius
+
+    @staticmethod
+    def non_max_supression(detections: np.ndarray, iou_threshold: float = 0.):
+        """Filters the detections bboxes using NMS.
+        Args:
+            detections (np.ndarray): [x1, x2, y1, y2, score]
+            iou_threshold (float): iou threshold value.
+        Returns:
+            detections (np.ndarray): [x1, x2, y1, y2, score]
+        """
+        bboxes = np.asarray(
+            [detections[:, 0], detections[:, 2], detections[:, 1], detections[:, 3]]).T
+
+        bboxes = torch.from_numpy(bboxes).to(torch.float)
+        scores = torch.from_numpy(detections[:, 4]).to(torch.float)
+        indxs = torchvision.ops.nms(bboxes, scores, iou_threshold=iou_threshold)
+        return detections[indxs, :]
