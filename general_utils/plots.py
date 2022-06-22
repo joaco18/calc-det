@@ -365,6 +365,8 @@ def add_detections_overlay(
             display. Defaults to 0.1.
         k (int, optional): increase in the size of the plotted bboxes.
             Plotted bboxe will have side + k by side + k size. Defaults to 10.
+        need_labeling (bool, optional): Whether the candidates should be labeled
+            or are already labeled.
     Returns:
         np.ndarray: image with plotted labelled candidates (BGR)
     """
