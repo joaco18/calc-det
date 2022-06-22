@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from path import Path
+from pathlib import Path
 
 from feature_extraction.feature_extraction import CandidatesFeatureExtraction_MP
 from machine_learning.cascade_classifier import CascadeClassifier
