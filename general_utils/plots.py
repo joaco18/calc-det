@@ -345,62 +345,6 @@ def draw_our_haar_like_features(
     return image
 
 
-def plot_detections(
-    detections: np.ndarray, image: np.ndarray, k=15,
-    gt_bboxes: List[tuple] = None, ax: int = None,
-    color=(255, 0, 0), return_image=False
-):
-    """Draws red a rectangle (increased in k pixels on each side) on each
-    detection, also writes the corresponding score.
-    Args:
-        detections (np.ndarray): array of detections bboxes [x1, x2, y1, y2, score].
-        image (np.ndarray): image to use as a basis.
-        k (int, optional): Extra size added in both direcitons to the bbox.
-            Defaults to 10.
-        gt_bboxes (List[tuple], optional): array of bboxes coordinates [((x1, y1), (x2, y2))].
-            If provided plotted in green. Defaults to None.
-        ax (bool, optional): Whether to plot the figure in the ax of another plot.
-            Defaults to None.
-        color (tuple, optional): Color use to plot bboxes and text.
-            Defaults to red  (255, 0, 0).
-        return_image (bool, optional): Whether to plot the figure or to return the image.
-            Defaults to False (plot figure).
-
-    Returns:
-        image (np.ndarray): image with plotted bboxes if return_image=True, otherwise None
-    """
-    if len(image.shape) < 3:
-        image = utils.min_max_norm(image, 255).astype('uint8')
-        image = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
-    for [x1, x2, y1, y2, score] in detections:
-        tl, br = utils.adjust_bbox_to_fit(image.shape, ((x1, y1), (x2, y2)), k)
-        image = cv2.rectangle(image, tl, br, color, 2)
-        label = f'{score:.3f}'
-        y = tl[1]-15 if (tl[1]-15) > 15 else tl[1]+15
-        image = cv2.putText(
-            image, label, (int(x1), int(y)), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
-
-    if gt_bboxes is not None:
-        for ((x1, y1), (x2, y2)) in gt_bboxes:
-            tl, br = utils.adjust_bbox_to_fit(
-                image.shape, ((x1, y1), (x2, y2)), k)
-            image = cv2.rectangle(image, tl, br, (0, 255, 0), 3)
-            label = 'GT'
-            y = tl[1]-15 if (tl[1]-15) > 15 else tl[1]+15
-            image = cv2.putText(
-                image, label, (int(x1), int(y)), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 3)
-    if return_image:
-        return image
-    else:
-        ax_ = ax
-        if ax_ is None:
-            f, ax = plt.subplots(1, 1, figsize=(12, 12))
-        ax.imshow(image)
-        ax.axis('off')
-        if ax_ is None:
-            plt.show()
-
-
 def add_detections_overlay(
     image: np.ndarray, candidates: pd.DataFrame, mask: np.ndarray = None,
     conf_thr: float = 0.1, k: int = 10, need_labeling: bool = True,
