@@ -85,6 +85,7 @@ class DetectionBasedDetector():
                 if self.rescale_prediced_bboxes(x, y)])
 
         # perform NMS to avoid duplicated detections over the overlapped regions
+        print(detections.shape)
         detections = dl_utils.non_max_supression(detections, self.iou_threshold)
 
         return detections
