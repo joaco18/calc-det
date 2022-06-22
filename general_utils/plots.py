@@ -197,7 +197,7 @@ def plot_froc(
     ax.set_ylim((0, 1))
     if cut_on_50fpi:
         ax.set_xlim(-0.01, 50)
-    ax.legend([f"{label} AUC: {auc(fpis/fpis.max(), tprs)}"])
+    ax.legend([f"{label} AUC: {auc(fpis/fpis.max(), tprs):.4f}"])
     sns.despine()
     if ax_ is None:
         plt.show()
@@ -241,7 +241,7 @@ def plot_bootstrap_froc(
         ax.set_xlim(-0.01, 50)
     ax.fill_between(fpis, min_tprs, max_tprs, alpha=0.3, color=cmap(0))
     ax.set_ylim((0, 1))
-    ax.legend([f"{label} AUC: {auc(fpis/fpis.max(), tprs)}"])
+    ax.legend([f"{label} mean-AUC: {auc(fpis/fpis.max(), tprs):.4f}"])
     sns.despine()
     if ax_ is None:
         plt.show()
