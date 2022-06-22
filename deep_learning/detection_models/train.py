@@ -18,12 +18,12 @@ import torch.optim as optim
 from torch.optim import lr_scheduler
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
-from torchvision.models.detection import FasterRCNN
+from torchvision.models.detection import FasterRCNN, RetinaNet
 from torchvision.models.detection.rpn import AnchorGenerator
 
 import deep_learning.dl_utils as dl_utils
 from deep_learning.dataset.dataset import INBreast_Dataset_pytorch
-from deep_learning.models.base_classifier import CNNClasssifier
+from deep_learning.classification_models.base_classifier import CNNClasssifier
 from deep_learning.detection_models.vision_utils.coco_utils import get_coco_api_from_dataset
 from deep_learning.detection_models.vision_utils.engine import train_one_epoch, evaluation
 
@@ -215,14 +215,29 @@ def main():
         featmap_names=['0'], output_size=7, sampling_ratio=2)
 
     # put the pieces together inside a FasterRCNN model
-    model = FasterRCNN(
-        model_backbone,
-        num_classes=cfg['model']['num_classes'],
-        rpn_anchor_generator=anchor_generator,
-        box_roi_pool=roi_pooler,
-        image_mean=[0., 0., 0.],
-        image_std=[1., 1., 1.],
-    )
+    if 'detector' not in cfg['model'].keys() or (cfg['model']['detector'] == 'faster-rcnn'):
+        model = FasterRCNN(
+            model_backbone,
+            num_classes=cfg['model']['num_classes'],
+            rpn_anchor_generator=anchor_generator,
+            box_roi_pool=roi_pooler,
+            image_mean=[0., 0., 0.],
+            image_std=[1., 1., 1.],
+        )
+    elif cfg['model']['detector'] == 'retinanet':
+        model = RetinaNet(
+            model_backbone,
+            num_classes=cfg['model']['num_classes'],
+            anchor_generator=anchor_generator,
+            box_roi_pool=roi_pooler,
+            min_size=224,
+            max_size=224,
+            image_mean=[0., 0., 0.],
+            image_std=[1., 1., 1.],
+        )
+    else:
+        raise Exception(
+            f"{cfg['model']['detector']} is not a valid detector. Try faster-rcnn or retinanet")
 
     model.to(device)
 
