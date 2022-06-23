@@ -91,7 +91,7 @@ cd ../../
 ```bash
 mkdir machine_learning/checkpoints
 cd machine_learning/checkpoints &&
-wget --load-cookies /tmp/cookies.txt "https://docs.google.com/uc?export=download&confirm=$(wget --quiet --save-cookies /tmp/cookies.txt --keep-session-cookies --no-check-certificate 'https://docs.google.com/uc?export=download&id=1QMRc9K7ow3gcfteojn4NgnhGS8qW1zxA' -O- | sed -rn 's/.*confirm=([0-9A-Za-z_]+).*/\1\n/p')&id=1QMRc9K7ow3gcfteojn4NgnhGS8qW1zxA" -O ml_cascade_checkpoints.zip && rm -rf /tmp/cookies.txt &&
+wget --load-cookies /tmp/cookies.txt "https://docs.google.com/uc?export=download&confirm=$(wget --quiet --save-cookies /tmp/cookies.txt --keep-session-cookies --no-check-certificate 'https://docs.google.com/uc?export=download&id=1v-nDrdt2ejno7QVZvgRbqIVM27ymx7ft' -O- | sed -rn 's/.*confirm=([0-9A-Za-z_]+).*/\1\n/p')&id=1v-nDrdt2ejno7QVZvgRbqIVM27ymx7ft" -O ml_cascade_checkpoints.zip && rm -rf /tmp/cookies.txt &&
 unzip ml_cascade_checkpoints.zip &&
 rm -rf ml_cascade_checkpoints.zip &&
 cd ../../
