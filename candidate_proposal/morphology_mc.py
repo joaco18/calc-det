@@ -162,7 +162,6 @@ class MorphologyCalcificationDetection:
         # connected components filtering
         candidate_blobs = []
         centers = []
-        # out = np.zeros_like(markers, dtype='uint16')
 
         contours, _ = cv2.findContours(
             np.where(markers > 0, 255, 0).astype('uint8'), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
@@ -194,5 +193,5 @@ class MorphologyCalcificationDetection:
             contours = [contours[i]
                         for i in range(len(contours)) if i not in indxs]
             candidate_blobs = candidate_blobs[indxs, :]
-        # out = cv2.drawContours(out, contours, -1, 255, -1)
+
         return candidate_blobs
