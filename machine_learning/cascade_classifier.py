@@ -33,7 +33,7 @@ class CascadeClassifier:
         """Predicts the probablility of given candidates to contain a mC
         Args:
             candidate_features (pd.DataFrame): containing candidate features and metadata.
-                Output of CandidatesFeatureExtraction().extract_features()
+                Output of CandidatesFeatureExtraction_MP().extract_features()
             feature_set (str, optional): Names of features to be used by models.
                 Defaults to 'all_features'. Options are:
                     ['fos', 'gabor', 'wavelet', 'haar', 'all_features']
@@ -75,7 +75,7 @@ class CascadeClassifier:
         Args:
             clf: sklearn classification model instance used for fit/predict.
             train_features (pd.DataFrame): containing candidate features and metadata.
-                Output of CandidatesFeatureExtraction().extract_features()
+                Output of CandidatesFeatureExtraction_MP().extract_features()
                 Check feature_e
             features (list[str]): names of features to be used by models
             sens_threshold (float): desired threshold of kept sensitivity
@@ -95,11 +95,7 @@ class CascadeClassifier:
         for validation_case_ids in kfolds_case_splits:
             # split data into test
             test_split_mask = train_features.case_id.isin(validation_case_ids)
-
-            # TODO: what is: "take into account cleaned data with no mC in
-            # the borders of the patch" here
-            # split into train and take into account cleaned data with no mC in
-            # the borders of the patch
+            # split into train / validation
             cleaned_features_data = train_features[~test_split_mask]
 
             # sample to a predefined 1:FP2TP_rate TP:FP samples
