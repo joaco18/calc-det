@@ -23,7 +23,7 @@ from torchvision.models.detection.rpn import AnchorGenerator
 
 import deep_learning.dl_utils as dl_utils
 from deep_learning.dataset.dataset import INBreast_Dataset_pytorch
-from deep_learning.models.base_classifier import CNNClasssifier
+from deep_learning.classification_models.models.base_classifier import CNNClasssifier
 from deep_learning.detection_models.vision_utils.coco_utils import get_coco_api_from_dataset
 from deep_learning.detection_models.vision_utils.engine import train_one_epoch, evaluation
 

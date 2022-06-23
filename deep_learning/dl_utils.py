@@ -1,6 +1,6 @@
 import sys
-from deep_learning.models.resnet_based_classifier import ResNetBased
-from deep_learning.models.base_classifier import CNNClasssifier
+from deep_learning.classification_models.models.resnet_based_classifier import ResNetBased
+from deep_learning.classification_models.models.base_classifier import CNNClasssifier
 from transformers import SwinForImageClassification
 from sklearn.metrics import (
     roc_curve, roc_auc_score, average_precision_score, f1_score, confusion_matrix

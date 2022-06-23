@@ -373,7 +373,7 @@ def get_tp_fp_fn_center_patch_criteria(
     make an easier computation of froc NMS this duplicates are kept. If they are not desired
     performing a drop_duplicates(subset=['repeted_idxs']) will do the job.
     Args:
-        candidates (np.ndarray): [x, y, radius]
+        candidates (np.ndarray): [x, y, radius, (scores)]
         roi_mask (np.ndarray): mask of lesion labels (each one identified independently)
         center_region_size (int): region in the center of the patch to consider for labeling.
             If set to None the hole patch is considered for the intersection.
