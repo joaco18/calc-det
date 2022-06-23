@@ -97,6 +97,30 @@ rm -rf ml_cascade_checkpoints.zip &&
 cd ../../
 ```
 
+## Runing a full case
+
+### AIA-ML
+
+```bash
+python petunias_mc_detector.py --dcm-filepath <ABOSULTE_PATH_TO_REPO>/example_img/24065734_5291e1aee2bbf5df_MG_L_CC_ANON.dcm --detector-type 'aia_ml' --ouput-path /<ABOSULTE_PATH_TO_REPO>/example_img/ --store-csv --v
+```
+
+### Deep learning classification based detection
+
+```bash
+python petunias_mc_detector.py --dcm-filepath <ABOSULTE_PATH_TO_REPO>/example_img/24065734_5291e1aee2bbf5df_MG_L_CC_ANON.dcm --detector-type 'classification_dl' --ouput-path /<ABOSULTE_PATH_TO_REPO>/example_img/ --store-csv --v --batch-size 224
+```
+
+in colab don't pass '--batch-size'
+
+### Deep learning detection based detection
+
+```bash
+python petunias_mc_detector.py --dcm-filepath <ABOSULTE_PATH_TO_REPO>/example_img/24065734_5291e1aee2bbf5df_MG_L_CC_ANON.dcm --detector-type 'detection_dl' --ouput-path /<ABOSULTE_PATH_TO_REPO>/example_img/ --store-csv --v --batch-size 1
+```
+
+in colab don't pass '--batch-size'
+
 #### Suggestion for contributers
 
 - numpy docstring format
