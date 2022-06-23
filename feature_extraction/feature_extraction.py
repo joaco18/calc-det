@@ -453,9 +453,11 @@ class CandidatesFeatureExtraction_MP(CandidatesFeatureExtraction):
     """
     def __init__(
         self, patch_size: int = PATCH_SIZE, fos: bool = True, gabor_params: dict = GABOR_PARAMS,
-        wavelet_params: dict = WAVELET_PARAMS, haar_params: dict = HAAR_PARAMS, n_jobs: int = 8
+        wavelet_params: dict = WAVELET_PARAMS, haar_params: dict = HAAR_PARAMS, n_jobs: int = -1
     ):
         super().__init__(patch_size, fos, gabor_params, wavelet_params, haar_params)
+        if n_jobs == -1:
+            n_jobs = mp.cpu_count()
         self.n_jobs = n_jobs
 
     def slice_image_in_patches(self, image, gabored_images, candidates):
