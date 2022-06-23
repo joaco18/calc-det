@@ -382,12 +382,12 @@ class CandidatesFeatureExtraction:
             glcm_features (dict): dictionary containing glcm features
         """
 
-        all_glcm_decomp = graycomatrix(utils.min_max_norm(
-            single_decomp, max_val=255).astype(np.uint8), [2], self.wavelet_params['angles'], normed=True)
+        all_glcm_decomp = graycomatrix(
+            utils.min_max_norm(single_decomp, max_val=255).astype(np.uint8),
+            [2], self.wavelet_params['angles'], normed=True)
 
         glcm_features = []
 
-        
         for feature_name in skimage_glcm_features:
             feature_results = graycoprops(
                 all_glcm_decomp, prop=feature_name)
@@ -445,26 +445,32 @@ class CandidatesFeatureExtraction:
                            patch_unif,
                            patch_relsmooth])
 
+
+# TODO: Vlad finish this refactoring once and for all
 class CandidatesFeatureExtraction_MP(CandidatesFeatureExtraction):
     """ Multiprocessing version of the CandidatesFeatureExtraction.
-    
+
     Works around 4x faster than the one above.
     """
-    def __init__(self, patch_size: int = PATCH_SIZE, fos=True, gabor_params=GABOR_PARAMS, wavelet_params=WAVELET_PARAMS, haar_params=HAAR_PARAMS, n_jobs=8):
+    def __init__(
+        self, patch_size: int = PATCH_SIZE, fos: bool = True, gabor_params: dict = GABOR_PARAMS,
+        wavelet_params: dict = WAVELET_PARAMS, haar_params: dict = HAAR_PARAMS, n_jobs: int = 8
+    ):
         super().__init__(patch_size, fos, gabor_params, wavelet_params, haar_params)
         self.n_jobs = n_jobs
-    
+
     def slice_image_in_patches(self, image, gabored_images, candidates):
         image_patches = []
         for coords in candidates:
             patch_x1, patch_x2, patch_y1, patch_y2 = utils.patch_coordinates_from_center(
                 (coords[0], coords[1]), image.shape, self.patch_size)
-            image_patches.append((image[patch_y1:patch_y2, patch_x1:patch_x2],
-                                  [gb[patch_y1:patch_y2, patch_x1:patch_x2] for gb in gabored_images],
-                                  [coords[0], coords[1], coords[2]],
-                                  ((patch_y1, patch_y2), (patch_x1, patch_x2))))
+            image_patches.append(
+                (image[patch_y1:patch_y2, patch_x1:patch_x2],
+                 [gb[patch_y1:patch_y2, patch_x1:patch_x2] for gb in gabored_images],
+                 [coords[0], coords[1], coords[2]],
+                 ((patch_y1, patch_y2), (patch_x1, patch_x2))))
         return image_patches
-    
+
     def extract_features(self, candidates: np.ndarray, image: np.ndarray):
         """Extracts features from image patches cropped around given candidates.
         Args:
@@ -488,24 +494,21 @@ class CandidatesFeatureExtraction_MP(CandidatesFeatureExtraction):
             features_haar = self.haar_features_extraction(image, candidates)
 
         image_patches = self.slice_image_in_patches(image, gabored_images, candidates)
-        
+
         candidates_features = []
         with mp.Pool(self.n_jobs) as pool:
             for result in pool.map(self.extract_patch_nonHaar_features, image_patches):
                 candidates_features.append(result)
 
-
         candidates_features = np.asarray(candidates_features, dtype=object)
-        
+
         if self.haar_params:
             candidates_features = np.concatenate(
                 [features_haar, candidates_features], axis=1)
         return candidates_features
-    
-    def extract_patch_nonHaar_features(self, patches):
 
-        
-        image_patch , gabored_image_patches, coords, pc = patches
+    def extract_patch_nonHaar_features(self, patches):
+        image_patch, gabored_image_patches, coords, pc = patches
         (patch_y1, patch_y2), (patch_x1, patch_x2) = pc
         # Extracting non-haar features
         features = []
@@ -526,7 +529,7 @@ class CandidatesFeatureExtraction_MP(CandidatesFeatureExtraction):
         features.append(coords)
         features.append(((patch_y1, patch_y2), (patch_x1, patch_x2)))
         return features
-        
+
     def gabor_features(self, gabored_image_patches):
         """Extracts energy, mean, std, skeweness and kurtosis from patches
             of images filtered with gabor kernel
@@ -534,7 +537,7 @@ class CandidatesFeatureExtraction_MP(CandidatesFeatureExtraction):
         Args:
             gabored_images (list): list of images filtered with Gabor kernels
         Returns:
-            np.ndarray: of 6_features*n_gabored_images 
+            np.ndarray: of 6_features*n_gabored_images
         """
         features = []
         for img_patch in gabored_image_patches:
