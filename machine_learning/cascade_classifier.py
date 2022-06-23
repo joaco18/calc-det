@@ -91,11 +91,7 @@ class CascadeClassifier:
         for validation_case_ids in kfolds_case_splits:
             # split data into test
             test_split_mask = train_features.case_id.isin(validation_case_ids)
-
-            # TODO: what is: "take into account cleaned data with no mC in
-            # the borders of the patch" here
-            # split into train and take into account cleaned data with no mC in
-            # the borders of the patch
+            # split into train / validation
             cleaned_features_data = train_features[~test_split_mask]
 
             # sample to a predefined 1:FP2TP_rate TP:FP samples
