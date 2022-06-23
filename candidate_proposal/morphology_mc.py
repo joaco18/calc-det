@@ -40,7 +40,7 @@ class MorphologyCalcificationDetection:
             min_distance (int): minimum distance between detections
             area (int): maximum area of a mc
             store_intermediate (bool, optional): whether to store rbd to accelerate tests.
-                Defaults to True.
+                Defaults to False.
             filter_muscle_region (bool, optional): whether to filter candidates inside the
                 pectoral muscle region. Defaults to False.
         """
