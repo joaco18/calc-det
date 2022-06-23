@@ -15,9 +15,9 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import roc_auc_score, precision_recall_curve, auc
 
 from database.dataset import INBreast_Dataset
-from mc_candidate_proposal.hough_mc import HoughCalcificationDetection
-from mc_candidate_proposal.morphology_mc import MorphologyCalcificationDetection
-from feature_extraction.feature_extraction import CandidatesFeatureExtraction
+from candidate_proposal.hough_mc import HoughCalcificationDetection
+from candidate_proposal.morphology_mc import MorphologyCalcificationDetection
+from feature_extraction.feature_extraction import CandidatesFeatureExtraction_MP
 import feature_extraction.haar_features.haar_modules as hm
 import general_utils.utils as utils
 from metrics.metrics_utils import get_tp_fp_fn_center_patch_criteria
@@ -86,7 +86,7 @@ def main():
         'patch_size': 14
     }
 
-    cfe = CandidatesFeatureExtraction(patch_size=14, fos=False, haar_params=haar_params)
+    cfe = CandidatesFeatureExtraction_MP(patch_size=14, fos=False, haar_params=haar_params)
 
     # Extract features for all images
     logging.info('Extracting features for images:')
