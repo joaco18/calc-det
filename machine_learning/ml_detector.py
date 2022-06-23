@@ -11,7 +11,6 @@ class DetectorML:
     """Calcification Detection Model based on Grayscale Morphology"""
     def __init__(self, cascade_model_path: str):
         """Constructor for the DetectorML class
-
         Args:
             cascade_model_path (str): Path to trained cascade models
                 trained on all features extracted from GSM detector.

@@ -57,11 +57,15 @@ class CascadeClassifier:
         if self.first_model is None:
             raise Exception(
                 'Model nor trained nor loaded. Provide a path to the model or perform training.')
+        logging.getLogger().setLevel(logging.ERROR)
 
         features_to_predict = candidate_features[features_sets[features_set]]
         first_stage_scores = self.first_model.predict_proba(features_to_predict)[:, 1]
         features_to_predict = features_to_predict[first_stage_scores > self.max_conf_thr_required]
-        return self.second_model.predict_proba(features_to_predict)[:, 1]
+        predictions = self.second_model.predict_proba(features_to_predict)[:, 1]
+        logging.getLogger().setLevel(logging.INFO)
+        return predictions
+        
 
     def fit(
         self, clf, train_features: pd.DataFrame, features: list, sens_threshold: float,
