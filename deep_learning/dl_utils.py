@@ -1,6 +1,6 @@
 import sys
-from deep_learning.models.resnet_based_classifier import ResNetBased
-from deep_learning.models.base_classifier import CNNClasssifier
+from deep_learning.classification_models.models.resnet_based_classifier import ResNetBased
+from deep_learning.classification_models.models.base_classifier import CNNClasssifier
 from transformers import SwinForImageClassification
 from sklearn.metrics import (
     roc_curve, roc_auc_score, average_precision_score, f1_score, confusion_matrix
@@ -100,7 +100,7 @@ def get_model_from_checkpoint(model_ckpt: dict, freezed: bool = True):
             activation=getattr(nn, cfg['model']['activation'])(),
             dropout=cfg['model']['dropout'],
             fc_dims=cfg['model']['fc_dims'],
-            freeze_weights=cfg['model']['freeze_weights'],
+            freeze_weights=freezed,
             backbone=cfg['model']['backbone'],
             pretrained=cfg['model']['pretrained'],
         )
@@ -121,15 +121,14 @@ def get_detection_model_from_checkpoint(model_ckpt: dict, freezed: bool = True):
     cfg = model_ckpt['configuration']
 
     if cfg['model']['checkpoint_path'] is not None:
-        model_ckpt = torch.load(cfg['model']['checkpoint_path'])
-        model = get_model_from_checkpoint(
-            model_ckpt, cfg['model']['freeze_weights'])
+        backbone_ckpt = torch.load(cfg['model']['checkpoint_path'])
+        model = get_model_from_checkpoint(backbone_ckpt, freezed)
     else:
         model = CNNClasssifier(
             activation=getattr(nn, cfg['model']['activation'])(),
             dropout=cfg['model']['dropout'],
             fc_dims=cfg['model']['fc_dims'],
-            freeze_weights=cfg['model']['freeze_weights'],
+            freeze_weights=freezed,
             backbone=cfg['model']['backbone'],
             pretrained=cfg['model']['pretrained'],
         )
@@ -172,7 +171,7 @@ def get_detection_model_from_checkpoint(model_ckpt: dict, freezed: bool = True):
     )
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     model = model.to(device)
-    model.load_state_dict(model_ckpt['model_state_dict'], False)
+    model.load_state_dict(model_ckpt['model_state_dict'])
     if freezed:
         for param in model.parameters():
             param.requires_grad = False
