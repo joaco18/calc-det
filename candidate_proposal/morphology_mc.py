@@ -1,4 +1,3 @@
-from unittest.mock import DEFAULT
 import cv2
 import numpy as np
 from skimage.measure import label
