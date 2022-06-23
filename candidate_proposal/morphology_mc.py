@@ -31,7 +31,7 @@ def filter_by_distance(centers, pairs):
 class MorphologyCalcificationDetection:
     def __init__(
         self, rbd_img_path: str, threshold: float, min_distance: int, area: int,
-        store_intermediate: bool = True, filter_muscle_region: bool = False
+        store_intermediate: bool = False, filter_muscle_region: bool = False
     ):
         """Constructor for MorphologyCalcificationDetection class
         Args:
