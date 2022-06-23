@@ -23,6 +23,7 @@ deep_learning/classification_models/checkpoints
 deep_learning/detection_models/checkpoints
 machine_learning/checkpoints
 notebooks/develop_complete_detector_dcm.ipynb
+notebooks/dev_dl_detector_metrics.ipynb
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
