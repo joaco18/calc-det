@@ -1,15 +1,19 @@
 import cv2
 import numpy as np
 import logging
-
-import scipy.ndimage as ndi
-
-from numba import njit
-from itertools import zip_longest
-from skimage.measure import label
-
 import torch
 import torchvision
+
+import pandas as pd
+import scipy.ndimage as ndi
+import SimpleITK as sitk
+
+from numba import njit
+from functools import partial
+from itertools import zip_longest
+from pathlib import Path
+from skimage.measure import label
+
 
 logging.basicConfig(level=logging.INFO)
 
@@ -389,6 +393,7 @@ def adjust_bbox_to_fit(img_shape: tuple, bbox: tuple, k: int):
     br = (int(x2), int(y2))
     return tl, br
 
+
 def non_max_supression(detections: np.ndarray, iou_threshold=0.5, return_indexes=False):
     """Filters the detections bboxes using NMS.
     Args:
@@ -402,8 +407,95 @@ def non_max_supression(detections: np.ndarray, iou_threshold=0.5, return_indexes
     bboxes = torch.from_numpy(bboxes).to(torch.float)
     scores = torch.from_numpy(detections[:, 4]).to(torch.float)
     indxs = torchvision.ops.nms(bboxes, scores, iou_threshold=iou_threshold)
-    
+
     if return_indexes:
         return indxs
     else:
         return detections[indxs, :]
+
+
+def detections_mask(
+    image: np.ndarray, candidates: pd.DataFrame, conf_thr: float = 0.1, k: int = 10
+):
+    """Labels the candidates and plots them accordingly over the provided image
+    Args:
+        image (np.ndarray): Image to plot the results
+        candidates (pd.DataFrame): [x, y, radius, score]
+        conf_thr (float, optional): final threshold to select candidates.
+            Only those with confidence higher will be considered for labelling and
+            display. Defaults to 0.1.
+        k (int, optional): increase in the size of the plotted bboxes.
+            Plotted bboxe will have side + k by side + k size. Defaults to 10.
+    Returns:
+        np.ndarray: binary image with detection bboxes
+    """
+    candidates = candidates.loc[~(candidates.score < conf_thr), :]
+
+    # format candidate coordinates to plotting format
+    get_bbox_from_center = partial(
+        patch_coordinates_from_center, image_shape=image.shape, patch_size=14+k)
+    centers_it = zip(candidates['x'].values, candidates['y'].values)
+    bbox_coordinates = [get_bbox_from_center(center) for center in centers_it]
+    candidates[['x1', 'x2', 'y1', 'y2']] = bbox_coordinates
+    candidates.drop(columns=['x', 'y'], inplace=True)
+    mask = np.zeros(image.shape, dtype='uint8')
+
+    # overlay bboxes
+    for _, [_, score, x1, x2, y1, y2] in candidates.iterrows():
+        tl = (int(x1), int(y1))
+        br = (int(x2), int(y2))
+        mask = cv2.rectangle(mask, tl, br, 255, 2)
+        bbox_tag = f'{score:.3f}'
+        y = tl[1]-15 if (tl[1]-15) > 15 else tl[1]+15
+        mask = cv2.putText(
+            mask, bbox_tag, (int(x1), int(y)), cv2.FONT_HERSHEY_SIMPLEX, 1, 255, 2)
+    return mask
+
+
+def store_as_dcm(
+    image: np.ndarray, detections_df: pd.DataFrame, original_dcm_filepath: Path,
+    output_filepath: Path, breast_bbox: tuple
+):
+    """Stores the bboxes mask as dcm image in order to visualize them in dicom viewer
+    Args:
+        image (np.ndarray): actual breastiamge processed
+        detections_df (pd.DataFrame): colums ---> ['x', 'y', 'radius', scores]
+        original_dcm_filepath (Path): Path to the original dicom, that can be
+            generated from the info kept in the img_df of dataset
+        output_filepath (Path): Path to the destiny dcm file
+        breast_bbox (tuple): Bbox of the breast region in the original image
+    """
+    assert original_dcm_filepath.exists(), \
+        f'Dcm image missing check the path {original_dcm_filepath}'
+    if isinstance(breast_bbox, str):
+        breast_bbox = load_coords(breast_bbox)
+    assert not isinstance(breast_bbox, (str, list, np.ndarray)), 'Breast bbox wrong, fix it'
+
+    # get the mask of detection bboxes
+    detections_df[['x', 'y', 'radius']] = detections_df[['x', 'y', 'radius']].astype('int')
+    mask = detections_mask(image, detections_df, conf_thr=0.28785, k=15)
+
+    # turn back the image to the right side if necessary
+    dcm_img_name = original_dcm_filepath.name
+    if dcm_img_name.split('_')[3] == 'R':
+        mask = np.fliplr(mask)
+
+    # read the original dicom to get the positional metadata
+    ref_itkimage = sitk.ReadImage(str(original_dcm_filepath))
+    ref_itkimage_array = sitk.GetArrayFromImage(ref_itkimage)
+    complete_mask = np.zeros(ref_itkimage_array.shape, dtype='uint8')
+
+    # replace the breast bbox region an empty image with the mask
+    tl = breast_bbox[0]
+    br = breast_bbox[1]
+    complete_mask[0, tl[1]:br[1], tl[0]:br[0]] = mask
+
+    # copy the positional metadata
+    origin = ref_itkimage.GetOrigin()
+    spacing = ref_itkimage.GetSpacing()
+    complete_mask = sitk.GetImageFromArray(complete_mask, isVector=False)
+    complete_mask.SetSpacing(spacing)
+    complete_mask.SetOrigin(origin)
+
+    # write the image
+    sitk.WriteImage(complete_mask, str(output_filepath))

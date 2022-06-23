@@ -4,24 +4,119 @@ import sys; sys.path.insert(0, str(thispath.parent))
 
 import cv2
 import torch
-import torchvision
 import logging
 
 import numpy as np
 
 from tqdm import tqdm
 from torch.utils.data import DataLoader
+from torch import nn
+from typing import Callable, List, Optional
 from functools import partial
 
 import general_utils.utils as utils
 from deep_learning.dataset.dataset import ImgCropsDataset
+from deep_learning.dl_utils import get_model_from_checkpoint, non_max_supression
+
+
+best_models = {
+    16: {
+        'checkpoint_path':
+            thispath.parent/'deep_learning/classification_models/checkpoints/16_net2_07.pt',
+        'threshold': 0.36629703640937805,
+        'pred_kind': 'score',
+        'norm_kind': 'avg',
+        'post_proc': True,
+        'batch_size': 2048,
+        'k_size': 9,
+        'patch_size': 16,
+        'stride': 8,
+        'nms': True,
+        'iou_threshold': 1,
+        'results_path': '/content/drive/MyDrive/calcification_detection/detections_dl/16_net2_07'
+    },
+    32: {
+        'checkpoint_path':
+            thispath.parent/'deep_learning/classification_models/checkpoints/32_net2_05.pt',
+        'threshold': 0.2795366644859314,
+        'pred_kind': 'score',
+        'norm_kind': 'avg',
+        'post_proc': True,
+        'batch_size': 1024,
+        'k_size': 17,
+        'patch_size': 32,
+        'stride': 8,
+        'nms': True,
+        'iou_threshold': 1,
+        'results_path': '/content/drive/MyDrive/calcification_detection/detections_dl/32_net2_05'
+    },
+    64: {
+        'checkpoint_path':
+            thispath.parent/'deep_learning/classification_models/checkpoints/64_net2_03.pt',
+        'threshold': 0.31617915630340576,
+        'pred_kind': 'score',
+        'norm_kind': 'avg',
+        'post_proc': True,
+        'batch_size': 512,
+        'k_size': 13,
+        'patch_size': 64,
+        'stride': 12,
+        'nms': True,
+        'iou_threshold': 1,
+        'results_path': '/content/drive/MyDrive/calcification_detection/detections_dl/64_net2_03'
+    },
+    224: {
+        'checkpoint_path':
+            thispath.parent/'deep_learning/classification_models/checkpoints/224_resnet50_05.pt',
+        'threshold': 0.7274762988090515,
+        'pred_kind': 'score',
+        'norm_kind': 'avg',
+        'post_proc': True,
+        'batch_size': 124,
+        'k_size': 17,
+        'patch_size': 224,
+        'stride': 12,
+        'nms': True,
+        'iou_threshold': 1,
+        'results_path':
+            '/content/drive/MyDrive/calcification_detection/detections_dl/224_resnet50_05.pt'
+    }
+}
+
+
+def get_detections(
+    img: np.ndarray, saliency_map: np.ndarray, bbox_size: int, threshold: float
+):
+    """Finds peaks in saliency map, and generates the corresponding bbox
+    Returns:
+        detections (np.ndarray): [x1, x2, y1, y2, score]
+    """
+    # get local maxima and filter by threshold and filter by breast region
+    breast_mask = np.where(img == 0, 0, 1)
+    peak_centers = utils.peak_local_max(
+        saliency_map, footprint=np.ones((bbox_size, bbox_size)),
+        threshold_abs=threshold, additional_mask=breast_mask
+    )
+    if len(peak_centers) == 0:
+        logging.warning(
+            "The current configuration led to no detections in the image, returning None")
+        return None
+
+    # convert from [row, column] (y,x) to (x,y)
+    peak_centers = np.fliplr(peak_centers)
+    scores = saliency_map[peak_centers[:, 1], peak_centers[:, 0]]
+    patch_coordinates_from_center = partial(
+        utils.patch_coordinates_from_center,
+        image_shape=breast_mask.shape, patch_size=bbox_size)
+    patches_coords = np.array(list(map(patch_coordinates_from_center, peak_centers)))
+    return np.concatenate([peak_centers, patches_coords, scores.reshape(-1, 1)], axis=1)
 
 
 class ClassificationBasedDetector():
-    """Obtain detections using a classification model using it in patches"""
+    """Obtain detections using a classification model using it in sliding window fashion"""
     def __init__(
         self,
-        model,
+        model: Optional[Callable[..., nn.Module]],
         threshold: float = 0,
         pred_kind: str = 'score',
         norm_kind: str = 'avg',
@@ -34,11 +129,14 @@ class ClassificationBasedDetector():
         bbox_size: int = 14,
         device: str = 'cpu',
         nms: bool = True,
-        iou_threshold: float = 0
+        iou_threshold: float = 1,
+        in_multiscale: bool = False,
+        **kwargs
     ):
         """
         Args:
-            model (_type_): Trained classification model from pytorch.
+            model (Callable[nn.Module], optional): Trianed and instantiates
+                callable classification model from pytorch.
             threshold (float, optional): Threshold to binarize predictions. Defaults to 0.
             pred_kind (str, optional). Which prediction to use.
                 'score': the raw score is used.
@@ -49,7 +147,7 @@ class ClassificationBasedDetector():
                 'normalize': do a min_max_norm over the complete saliency map.
                 Defaults to 'avg'.
             post_proc (bool, optional): Wether to apply post processing. Defaults to True
-            patch_size (int, optional): Size of the input to the network. Defaults to 224.
+            patch_size (int, optional): Size of the input to the network.
             stride (int, optional): Stride to use when obtaining patches from the imge.
                 Defaults to 25.
             min_breast_fraction_patch (int, optional): Minimum of breast tissue that the patch
@@ -59,7 +157,9 @@ class ClassificationBasedDetector():
             bbox_size (int, optional): Size of the detection enclosing. Defaults to 14.
             device (str, optional): Defaults to 'cpu'.
             nms (bool, optional): Whether to perform NMS or not. Defaults to True.
-            iou_threshold (float, optional): IoU Threshold to be used in NMS. Defaults to 0.
+            iou_threshold (float, optional): IoU Threshold to be used in NMS. Defaults to 1.
+            in_multiscale (bool, optional): Whether the class is used in multiscale case.
+                Defaults to False
         """
         self.model = model
         self.threshold = threshold
@@ -75,10 +175,11 @@ class ClassificationBasedDetector():
         self.pred_kind = pred_kind
         self.norm_kind = norm_kind
         self.k_size = k_size
+        self.in_multiscale = in_multiscale
 
     def detect(
         self, img: np.ndarray, raw_saliency_path: Path = None,
-        final_saliency_path: Path = None
+        final_saliency_path: Path = None, store: bool = False
     ):
         """Divides the image in patches, runs classification, joints the results and extracts
         detections out of the saliency map, using the configured treshold and NMS.
@@ -86,6 +187,7 @@ class ClassificationBasedDetector():
             img (np.ndarray): Full image to process
             raw_saliency_path (Path): Path to store raw saliency map
             final_saliency_path (Path): Path to store normalized postprocessed saliency map
+            store (bool): Whether to store the saliency map images.
         Returns:
             detections (np.ndarray): [x1, x2, y1, y2, score]
         """
@@ -126,7 +228,7 @@ class ClassificationBasedDetector():
                     self.saliency_map = utils.min_max_norm(
                         self.saliency_map, 1).astype('float32')
 
-                if raw_saliency_path is not None:
+                if (raw_saliency_path is not None) and store:
                     cv2.imwrite(str(raw_saliency_path), self.saliency_map)
             else:
                 self.saliency_map = cv2.imread(
@@ -142,55 +244,86 @@ class ClassificationBasedDetector():
             # normalize to [0, 1]
             self.saliency_map = utils.min_max_norm(self.saliency_map, 1).astype('float32')
             # adapt threshold if necesary
-            cv2.imwrite(str(final_saliency_path), self.saliency_map)
+            if store:
+                cv2.imwrite(str(final_saliency_path), self.saliency_map)
         else:
             self.saliency_map = cv2.imread(str(final_saliency_path), cv2.IMREAD_ANYDEPTH)
 
-        # extract detections bboxes
-        detections = self.get_detections()
+        if not self.in_multiscale:
+            # extract detections bboxes
+            detections = get_detections(
+                self.img, self.saliency_map, self.bbox_size, self.threshold)
+            # nms
+            if self.nms:
+                detections = non_max_supression(detections, self.iou_threshold)
+            return detections
 
+
+class MultiScaleClassificationBasedDetector():
+    """Obtain detections using several classification models using them in sliding window fashion"""
+    def __init__(
+        self,
+        scales: Optional[List[int]] = [16],
+        bbox_size: int = 14,
+        threshold: float = 0,
+        nms: bool = True,
+        iou_threshold: float = 1,
+        merge_type: str = 'mean'
+    ):
+        """
+        Args:
+            scales (List[int], optional): Scales of pretrained models to use.
+                Defaults to [16]
+            bbox_size (int, optional): Size of the detection enclosing. Defaults to 14.
+            threshold (float, optional): Threshold to binarize predictions. Defaults to 0.
+            nms (bool, optional): Whether to do nms or not. Defaults to True
+            iou_threshold (float, optional): IoU Threshold to be used in NMS. Defaults to 1.
+            merge_type: Whether to combine the saliency maps with 'max' or 'mean' operation.
+        """
+        self.bbox_size = bbox_size
+        self.threshold = threshold
+        self.iou_threshold = iou_threshold
+        self.nms = nms
+        self.merge_type = merge_type
+
+        self.detectors = {}
+        self.scales = scales
+        for scale in self.scales:
+            model_params = best_models[scale]
+            model_ckpt = torch.load(model_params['checkpoint_path'])
+            model = get_model_from_checkpoint(model_ckpt)
+            self.detectors[scale] = \
+                ClassificationBasedDetector(model, in_multiscale=True, **model_params)
+
+    def detect(
+        self, img: np.ndarray, image_id: str, final_saliency_path: Path = None, store: bool = False
+    ):
+        self.img = img
+        if (final_saliency_path is None) or (not final_saliency_path.exists()):
+            saliency_map = np.zeros((len(self.scales), self.img.shape[0], self.img.shape[1]))
+            for k, scale in enumerate(self.scales):
+                results_path_single = best_models[scale]['results_path']
+                results_path_img_single = Path(results_path_single) / f'{image_id}'
+                raw_saliency_path_single = \
+                    Path(results_path_img_single) / f'{image_id}_raw_sm.tiff'
+                final_saliency_path_single = \
+                    Path(results_path_img_single) / f'{image_id}_final_sm.tiff'
+                self.detectors[scale].detect(
+                    self.img, raw_saliency_path_single, final_saliency_path_single, store=False)
+                saliency_map[k, :, :] = self.detectors[scale].saliency_map
+            if self.merge_type == 'mean':
+                self.saliency_map = np.mean(saliency_map, axis=0)
+            elif self.merge_type == 'max':
+                self.saliency_map = np.max(saliency_map, axis=0)
+
+            if store:
+                cv2.imwrite(str(final_saliency_path), self.saliency_map)
+        else:
+            self.saliency_map = cv2.imread(str(final_saliency_path), cv2.IMREAD_ANYDEPTH)
+
+        detections = get_detections(
+            self.img, self.saliency_map, self.bbox_size, self.threshold)
         # nms
         if self.nms:
-            detections = self.non_max_supression(detections, self.iou_threshold)
+            detections = non_max_supression(detections, self.iou_threshold)
         return detections
-
-    def get_detections(self):
-        """Finds peaks in saliency map, and generates the corresponding bbox
-        Returns:
-            detections (np.ndarray): [x1, x2, y1, y2, score]
-        """
-        # get local maxima and filter by threshold and filter by breast region
-        breast_mask = np.where(self.img == 0, 0, 1)
-        peak_centers = utils.peak_local_max(
-            self.saliency_map, footprint=np.ones((self.bbox_size, self.bbox_size)),
-            threshold_abs=self.threshold, additional_mask=breast_mask
-        )
-        if len(peak_centers) == 0:
-            logging.warning(
-                "The current configuration led to no detections in the image, returning None")
-            return None
-        # convert from [row, column] (y,x) to (x,y)
-        peak_centers = np.fliplr(peak_centers)
-        scores = self.saliency_map[peak_centers[:, 1], peak_centers[:, 0]]
-        patch_coordinates_from_center = partial(
-            utils.patch_coordinates_from_center,
-            image_shape=breast_mask.shape, patch_size=self.bbox_size)
-        patches_coords = np.array(list(map(patch_coordinates_from_center, peak_centers)))
-        return np.concatenate([peak_centers, patches_coords, scores.reshape(-1, 1)], axis=1)
-
-    @staticmethod
-    def non_max_supression(detections: np.ndarray, iou_threshold: float = 0.):
-        """Filters the detections bboxes using NMS.
-        Args:
-            detections (np.ndarray): [xc, yc, x1, x2, y1, y2, score]
-            iou_threshold (float): iou threshold value.
-        Returns:
-            detections (np.ndarray): [xc, yc, x1, x2, y1, y2, score]
-        """
-        bboxes = np.asarray(
-            [detections[:, 2], detections[:, 4], detections[:, 3], detections[:, 5]]).T
-
-        bboxes = torch.from_numpy(bboxes).to(torch.float)
-        scores = torch.from_numpy(detections[:, 6]).to(torch.float)
-        indxs = torchvision.ops.nms(bboxes, scores, iou_threshold=iou_threshold)
-        return detections[indxs, :]

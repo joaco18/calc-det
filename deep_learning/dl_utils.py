@@ -146,11 +146,11 @@ def get_detection_model_from_checkpoint(model_ckpt: dict, freezed: bool = True):
         if hasattr(last_submodule_childs[i], 'out_channels'):
             out_channels = last_submodule_childs[i].out_channels
             break
-    
+
     # densenet blocks don't have out_channels attribute
     if 'densenet121' in cfg['model']['backbone']:
         out_channels = 1024
-        
+
     model_backbone = nn.Sequential(*modules)
     model_backbone.out_channels = out_channels
     anchor_generator = AnchorGenerator(
@@ -178,3 +178,20 @@ def get_detection_model_from_checkpoint(model_ckpt: dict, freezed: bool = True):
             param.requires_grad = False
 
     return model
+
+
+def non_max_supression(detections: np.ndarray, iou_threshold: float = 0.):
+    """Filters the detections bboxes using NMS.
+    Args:
+        detections (np.ndarray): [xc, yc, x1, x2, y1, y2, score]
+        iou_threshold (float): iou threshold value.
+    Returns:
+        detections (np.ndarray): [xc, yc, x1, x2, y1, y2, score]
+    """
+    bboxes = np.asarray(
+        [detections[:, 2], detections[:, 4], detections[:, 3], detections[:, 5]]).T
+
+    bboxes = torch.from_numpy(bboxes).to(torch.float)
+    scores = torch.from_numpy(detections[:, 6]).to(torch.float)
+    indxs = torchvision.ops.nms(bboxes, scores, iou_threshold=iou_threshold)
+    return detections[indxs, :]
