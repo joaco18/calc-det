@@ -216,7 +216,7 @@ class HoughCalcificationDetection:
         cx, cy, cr = circle
         # get coordinates of 200*200 cropped patch aroung circle
         x1, x2, y1, y2 = patch_coordinates_from_center(
-            (cx, cy), self.processed_image.shape, patch_size=patch_size*2, use_padding=False)
+            (cx, cy), self.processed_image.shape, patch_size=patch_size*2)
 
         h2_normalized_patch = self.processed_image[y1:y2, x1:x2].copy()
 

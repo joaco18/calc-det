@@ -2,7 +2,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, Path.cwd().parent)
 import cv2
-import pickle 
+import pickle
 import logging
 import numpy as np
 import multiprocessing as mp
@@ -15,8 +15,6 @@ from skimage.feature import graycomatrix, graycoprops, haar_like_feature_coord
 import general_utils.utils as utils
 from feature_extraction.haar_features.haar_extractor import \
     extract_haar_feature_image_skimage, HaarFeatureExtractor
-
-import feature_extraction.haar_features.haar_modules as hm
 
 # machine epsillon used to avoid zero errors
 epsillon = np.finfo(float).eps
@@ -35,11 +33,12 @@ GABOR_PARAMS = {'scale': 2, 'orientation': 3,
                 'max_freq': 0.2, 'ksize': (20, 20), 'sigma': 3}
 WAVELET_PARAMS = {'angles': [0, np.pi/4, np.pi/2]}
 
-
-haar_feat_path = Path.cwd().parent / 'data/final_haar_500_feat_selection_gsm.p' #'/home/vzalevskyi/projects/calc-det/data/final_haar_500_feat_selection_gsm.p'
+this_path = Path(__file__).parent.resolve()
+#'/home/vzalevskyi/projects/calc-det/data/final_haar_500_feat_selection_gsm.p'
+haar_feat_path = this_path.parent / 'data/final_haar_500_feat_selection_gsm.p'
 with open(haar_feat_path, 'rb') as f:
     selection = pickle.load(f)
-    
+
 HAAR_PARAMS = {
     'skimage': {
         'feature_type': selection['skimage_haar_feature_types_sel'],
@@ -58,9 +57,11 @@ HAAR_PARAMS = {
 logging.basicConfig(level=logging.INFO)
 
 
-class CandidatesFeatureExtraction:
-    def __init__(self, patch_size: int, fos=True, gabor_params=None, wavelet_params=None,
-                 haar_params=None):
+class CandidatesFeatureExtraction_MP:
+    def __init__(
+        self, patch_size: int = PATCH_SIZE, fos: bool = True, gabor_params: dict = GABOR_PARAMS,
+        wavelet_params: dict = WAVELET_PARAMS, haar_params: dict = HAAR_PARAMS, n_jobs: int = -1
+    ):
         """Defines which features to extract
 
         Args:
@@ -71,6 +72,7 @@ class CandidatesFeatureExtraction:
             wavelet_params (dict): parameters for wavelt glcm f.e.
                 needs key 'angle' with a list of angles to calculate GLCMs for.
             haar_params (dict): parameters for haar features extractor
+            n_jobs (int): number of procceses to use. Defaults to -1 (use all cores).
 
         """
         self.patch_size = patch_size
@@ -78,7 +80,11 @@ class CandidatesFeatureExtraction:
         self.gabor_params = gabor_params
         self.wavelet_params = wavelet_params
         self.haar_params = haar_params
-
+        
+        if n_jobs == -1:
+            n_jobs = mp.cpu_count()
+        self.n_jobs = n_jobs
+        
         # used to store calculated features names
         self.get_feature_names()
 
@@ -131,50 +137,75 @@ class CandidatesFeatureExtraction:
             np.array: rows candidates, columns (features + 3 columns of metadata)
         """
         image = utils.min_max_norm(image, max_val=1.)
-        candidates_features = []
 
         if self.gabor_params:
             gabor_kernels = gabor_kernels = self.gabor_feature_bank(
                 **self.gabor_params)
             gabored_images = [cv2.filter2D(
                 image, ddepth=cv2.CV_32F, kernel=k) for k in gabor_kernels]
+        else:
+            gabored_images = []
 
         if self.haar_params:
             features_haar = self.haar_features_extraction(image, candidates)
 
-        for coords in candidates:
-            # calculating canidate cropping patch coordinates
-            patch_x1, patch_x2, patch_y1, patch_y2 = utils.patch_coordinates_from_center(
-                (coords[0], coords[1]), image.shape, self.patch_size)
-            image_patch = image[patch_y1:patch_y2, patch_x1:patch_x2]
+        image_patches = self.slice_image_in_patches(image, gabored_images, candidates)
 
-            # Extracting non-haar features
-            features = []
+        candidates_features = []
+        with mp.Pool(self.n_jobs) as pool:
+            for result in pool.map(self.extract_patch_nonHaar_features, image_patches):
+                candidates_features.append(result)
 
-            # First order statistics features
-            if self.fos:
-                features.extend(self.first_order_statistics(image_patch))
-
-            # Gabor features
-            if self.gabor_params:
-                features.extend(self.gabor_features(
-                    gabored_images, patch_x1, patch_x2, patch_y1, patch_y2))
-
-            # Wavelet and GLCM features
-            if self.wavelet_params:
-                features.extend(self.get_wavelet_features(image_patch))
-
-            # Append metadata columns
-            features.append(coords)
-            features.append(((patch_y1, patch_y2), (patch_x1, patch_x2)))
-            candidates_features.append(features)
-        
         candidates_features = np.asarray(candidates_features, dtype=object)
-        
+
         if self.haar_params:
             candidates_features = np.concatenate(
                 [features_haar, candidates_features], axis=1)
         return candidates_features
+
+    def extract_patch_nonHaar_features(self, patches):
+        image_patch, gabored_image_patches, coords, pc = patches
+        (patch_y1, patch_y2), (patch_x1, patch_x2) = pc
+        # Extracting non-haar features
+        features = []
+
+        # First order statistics features
+        if self.fos:
+            features.extend(self.first_order_statistics(image_patch))
+
+        # Gabor features
+        if self.gabor_params:
+            features.extend(self.gabor_features(gabored_image_patches))
+
+        # Wavelet and GLCM features
+        if self.wavelet_params:
+            features.extend(self.get_wavelet_features(image_patch))
+
+        # Append metadata columns
+        features.append(coords)
+        features.append(((patch_y1, patch_y2), (patch_x1, patch_x2)))
+        return features
+
+    def gabor_features(self, gabored_image_patches):
+        """Extracts energy, mean, std, skeweness and kurtosis from patches
+            of images filtered with gabor kernel
+
+        Args:
+            gabored_images (list): list of images filtered with Gabor kernels
+        Returns:
+            np.ndarray: of 6_features*n_gabored_images
+        """
+        features = []
+        for img_patch in gabored_image_patches:
+
+            features.extend([(img_patch**2).sum(),
+                             np.max(img_patch),
+                             np.min(img_patch),
+                             np.mean(img_patch),
+                             np.std(img_patch),
+                             skew(img_patch.ravel()),
+                             kurtosis(img_patch.ravel())])
+        return np.asarray(features)
 
     def haar_features_extraction(self, image: np.ndarray, candidates: np.ndarray):
         """Get horizontal haar features from skimage and rotated ones from our code.
@@ -274,7 +305,7 @@ class CandidatesFeatureExtraction:
         patch_size = image_patch.shape[0]*image_patch.shape[1]
 
         img_energy = (image_patch**2).sum()
-        img_entropy, img_uniformity = CandidatesFeatureExtraction.entropy_uniformity(
+        img_entropy, img_uniformity = CandidatesFeatureExtraction_MP.entropy_uniformity(
             image_patch)
         img_min = image_patch.min()
         img_10th_perc = np.quantile(image_patch, q=0.1)
@@ -318,28 +349,6 @@ class CandidatesFeatureExtraction:
 
         return gabor_kernels
 
-    def gabor_features(self, gabored_images, patch_x1, patch_x2, patch_y1, patch_y2):
-        """Extracts energy, mean, std, skeweness and kurtosis from patches
-            of images filtered with gabor kernel
-
-        Args:
-            gabored_images (list): list of images filtered with Gabor kernels
-        Returns:
-            np.ndarray: of 6_features*n_gabored_images 
-        """
-        features = []
-        for filtered_image in gabored_images:
-            img_patch = filtered_image[patch_y1:patch_y2, patch_x1:patch_x2]
-
-            features.extend([(img_patch**2).sum(),
-                             np.max(img_patch),
-                             np.min(img_patch),
-                             np.mean(img_patch),
-                             np.std(img_patch),
-                             skew(img_patch.ravel()),
-                             kurtosis(img_patch.ravel())])
-        return np.asarray(features)
-
     def get_wavelet_features(self, patch: np.ndarray):
         """ Extracts features from an patch's haar 2-level wavelet
         decomposition (8 decompositions)
@@ -355,12 +364,12 @@ class CandidatesFeatureExtraction:
         Returns:
             features (dict): dictionary containing all extracted features
         """
-        eight_decomp = CandidatesFeatureExtraction.get_wavelet_decomp(patch)
+        eight_decomp = CandidatesFeatureExtraction_MP.get_wavelet_decomp(patch)
         wavelet_params = []
 
         for idx, single_decomp in enumerate(eight_decomp):
             wavelet_params.extend(
-                CandidatesFeatureExtraction.wav_first_order(single_decomp, idx))
+                CandidatesFeatureExtraction_MP.wav_first_order(single_decomp, idx))
 
         for idx, single_decomp in enumerate(eight_decomp[1:4]):
             wavelet_params.extend(self.wav_glcm_features(single_decomp, idx))
@@ -382,12 +391,12 @@ class CandidatesFeatureExtraction:
             glcm_features (dict): dictionary containing glcm features
         """
 
-        all_glcm_decomp = graycomatrix(utils.min_max_norm(
-            single_decomp, max_val=255).astype(np.uint8), [2], self.wavelet_params['angles'], normed=True)
+        all_glcm_decomp = graycomatrix(
+            utils.min_max_norm(single_decomp, max_val=255).astype(np.uint8),
+            [2], self.wavelet_params['angles'], normed=True)
 
         glcm_features = []
 
-        
         for feature_name in skimage_glcm_features:
             feature_results = graycoprops(
                 all_glcm_decomp, prop=feature_name)
@@ -433,7 +442,7 @@ class CandidatesFeatureExtraction:
         patch_std = np.std(single_decomp)
         patch_skew = skew(single_decomp.ravel())
         patch_kurt = kurtosis(single_decomp.ravel())
-        patch_entropy, patch_unif = CandidatesFeatureExtraction.entropy_uniformity(
+        patch_entropy, patch_unif = CandidatesFeatureExtraction_MP.entropy_uniformity(
             single_decomp)
         patch_relsmooth = 1 - 1/(1+patch_std)
 
@@ -445,105 +454,15 @@ class CandidatesFeatureExtraction:
                            patch_unif,
                            patch_relsmooth])
 
-class CandidatesFeatureExtraction_MP(CandidatesFeatureExtraction):
-    """ Multiprocessing version of the CandidatesFeatureExtraction.
-    
-    Works around 4x faster than the one above.
-    """
-    def __init__(self, patch_size: int = PATCH_SIZE, fos=True, gabor_params=GABOR_PARAMS, wavelet_params=WAVELET_PARAMS, haar_params=HAAR_PARAMS, n_jobs=8):
-        super().__init__(patch_size, fos, gabor_params, wavelet_params, haar_params)
-        self.n_jobs = n_jobs
-    
     def slice_image_in_patches(self, image, gabored_images, candidates):
         image_patches = []
         for coords in candidates:
             patch_x1, patch_x2, patch_y1, patch_y2 = utils.patch_coordinates_from_center(
                 (coords[0], coords[1]), image.shape, self.patch_size)
-            image_patches.append((image[patch_y1:patch_y2, patch_x1:patch_x2],
-                                  [gb[patch_y1:patch_y2, patch_x1:patch_x2] for gb in gabored_images],
-                                  [coords[0], coords[1], coords[2]],
-                                  ((patch_y1, patch_y2), (patch_x1, patch_x2))))
+            image_patches.append(
+                (image[patch_y1:patch_y2, patch_x1:patch_x2],
+                 [gb[patch_y1:patch_y2, patch_x1:patch_x2] for gb in gabored_images],
+                 [coords[0], coords[1], coords[2]],
+                 ((patch_y1, patch_y2), (patch_x1, patch_x2))))
         return image_patches
-    
-    def extract_features(self, candidates: np.ndarray, image: np.ndarray):
-        """Extracts features from image patches cropped around given candidates.
-        Args:
-            candidates (np.ndarray): of dtype=int containing candidats for FE of shape
-                (n_candidates, 3). Second axis should contain (x_coord, y_coord, radius).
-            image (np.ndarray): 2D image used for cropping and FE
-        Returns:
-            np.array: rows candidates, columns (features + 3 columns of metadata)
-        """
-        image = utils.min_max_norm(image, max_val=1.)
 
-        if self.gabor_params:
-            gabor_kernels = gabor_kernels = self.gabor_feature_bank(
-                **self.gabor_params)
-            gabored_images = [cv2.filter2D(
-                image, ddepth=cv2.CV_32F, kernel=k) for k in gabor_kernels]
-        else:
-            gabored_images = []
-
-        if self.haar_params:
-            features_haar = self.haar_features_extraction(image, candidates)
-
-        image_patches = self.slice_image_in_patches(image, gabored_images, candidates)
-        
-        candidates_features = []
-        with mp.Pool(self.n_jobs) as pool:
-            for result in pool.map(self.extract_patch_nonHaar_features, image_patches):
-                candidates_features.append(result)
-
-
-        candidates_features = np.asarray(candidates_features, dtype=object)
-        
-        if self.haar_params:
-            candidates_features = np.concatenate(
-                [features_haar, candidates_features], axis=1)
-        return candidates_features
-    
-    def extract_patch_nonHaar_features(self, patches):
-
-        
-        image_patch , gabored_image_patches, coords, pc = patches
-        (patch_y1, patch_y2), (patch_x1, patch_x2) = pc
-        # Extracting non-haar features
-        features = []
-
-        # First order statistics features
-        if self.fos:
-            features.extend(self.first_order_statistics(image_patch))
-
-        # Gabor features
-        if self.gabor_params:
-            features.extend(self.gabor_features(gabored_image_patches))
-
-        # Wavelet and GLCM features
-        if self.wavelet_params:
-            features.extend(self.get_wavelet_features(image_patch))
-
-        # Append metadata columns
-        features.append(coords)
-        features.append(((patch_y1, patch_y2), (patch_x1, patch_x2)))
-        return features
-        
-    def gabor_features(self, gabored_image_patches):
-        """Extracts energy, mean, std, skeweness and kurtosis from patches
-            of images filtered with gabor kernel
-
-        Args:
-            gabored_images (list): list of images filtered with Gabor kernels
-        Returns:
-            np.ndarray: of 6_features*n_gabored_images 
-        """
-        features = []
-        for img_patch in gabored_image_patches:
-
-            features.extend([(img_patch**2).sum(),
-                             np.max(img_patch),
-                             np.min(img_patch),
-                             np.mean(img_patch),
-                             np.std(img_patch),
-                             skew(img_patch.ravel()),
-                             kurtosis(img_patch.ravel())])
-        return np.asarray(features)

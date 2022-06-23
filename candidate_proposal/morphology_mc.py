@@ -1,4 +1,3 @@
-from unittest.mock import DEFAULT
 import cv2
 import numpy as np
 from skimage.measure import label
@@ -32,7 +31,7 @@ def filter_by_distance(centers, pairs):
 class MorphologyCalcificationDetection:
     def __init__(
         self, rbd_img_path: str, threshold: float, min_distance: int, area: int,
-        store_intermediate: bool = True, filter_muscle_region: bool = False
+        store_intermediate: bool = False, filter_muscle_region: bool = False
     ):
         """Constructor for MorphologyCalcificationDetection class
         Args:
@@ -41,7 +40,7 @@ class MorphologyCalcificationDetection:
             min_distance (int): minimum distance between detections
             area (int): maximum area of a mc
             store_intermediate (bool, optional): whether to store rbd to accelerate tests.
-                Defaults to True.
+                Defaults to False.
             filter_muscle_region (bool, optional): whether to filter candidates inside the
                 pectoral muscle region. Defaults to False.
         """
@@ -163,7 +162,6 @@ class MorphologyCalcificationDetection:
         # connected components filtering
         candidate_blobs = []
         centers = []
-        # out = np.zeros_like(markers, dtype='uint16')
 
         contours, _ = cv2.findContours(
             np.where(markers > 0, 255, 0).astype('uint8'), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
@@ -195,5 +193,5 @@ class MorphologyCalcificationDetection:
             contours = [contours[i]
                         for i in range(len(contours)) if i not in indxs]
             candidate_blobs = candidate_blobs[indxs, :]
-        # out = cv2.drawContours(out, contours, -1, 255, -1)
+
         return candidate_blobs

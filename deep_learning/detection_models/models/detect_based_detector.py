@@ -12,6 +12,7 @@ from torch.utils.data import DataLoader
 from deep_learning.dataset.dataset import ImgCropsDataset
 import general_utils.utils as utils
 
+
 class DetectionBasedDetector():
     """Obtain detections using a classification model using it in patches"""
     def __init__(
@@ -95,7 +96,7 @@ class DetectionBasedDetector():
         detections = np.concatenate([centers, detections], axis=1)
 
         # perform NMS to avoid duplicated detections over the overlapped regions
-        detections = dl_utils.non_max_supression(detections, 0.5)
+        detections = utils.non_max_supression(detections, 0.5)
         if self.score_threshold > 0:
             keep = np.where(detections[:, -1] >= self.score_threshold, True, False)
             detections = detections[keep, :]

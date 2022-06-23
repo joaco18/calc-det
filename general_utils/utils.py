@@ -394,20 +394,27 @@ def adjust_bbox_to_fit(img_shape: tuple, bbox: tuple, k: int):
     return tl, br
 
 
-def non_max_supression(detections: np.ndarray, iou_threshold=0.5, return_indexes=False):
+def non_max_supression(
+    detections: np.ndarray, iou_threshold: float = 0.5, return_indexes: bool = False
+):
     """Filters the detections bboxes using NMS.
     Args:
-        detections (np.ndarray): [x1, x2, y1, y2, score]
+        detections (np.ndarray): [x1, x2, y1, y2, score] or [xc, yc, x1, x2, y1, y2, score]
+        iou_threshold (float, optional): Iou threshold value. Defaults to 0.5.
+        return_indexes (bool, optional): Whether to return the indexes or the filtered detections.
     Returns:
-        detections (np.ndarray): [x1, x2, y1, y2, score]
+        detections (np.ndarray): [x1, x2, y1, y2, score] or [xc, yc, x1, x2, y1, y2, score]
     """
+    if detections.shape[1] == 5:
+        x1, x2, y1, y2, score = 0, 1, 2, 3, 4
+    elif detections.shape[1] == 7:
+        x1, x2, y1, y2, score = 2, 3, 4, 5, 6
     bboxes = np.asarray(
-        [detections[:, 0], detections[:, 2], detections[:, 1], detections[:, 3]]).T
+        [detections[:, x1], detections[:, y1], detections[:, x2], detections[:, y2]]).T
 
     bboxes = torch.from_numpy(bboxes).to(torch.float)
-    scores = torch.from_numpy(detections[:, 4]).to(torch.float)
+    scores = torch.from_numpy(detections[:, score]).to(torch.float)
     indxs = torchvision.ops.nms(bboxes, scores, iou_threshold=iou_threshold)
-
     if return_indexes:
         return indxs
     else:
