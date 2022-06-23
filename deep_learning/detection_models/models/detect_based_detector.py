@@ -24,6 +24,7 @@ class DetectionBasedDetector():
         bbox_size: int = 14,
         device: str = 'cpu',
         iou_threshold: float = 0.5,
+        score_threshold: float = 0.
     ):
         """
         Args:
@@ -39,6 +40,8 @@ class DetectionBasedDetector():
             bbox_size (int, optional): Size of the detection enclosing. Defaults to 14.
             device (str, optional): Defaults to 'cpu'.
             iou_threshold (float, optional): IoU Threshold to be used in NMS. Defaults to 0.5
+            score_threshold (float, optional): confidence threshold to filter detectoins.
+                Defaults to zero which means no threshold is applied
         """
         self.model_chkp = model_chkp
         self.model = dl_utils.get_detection_model_from_checkpoint(model_chkp, True).eval()
@@ -50,6 +53,7 @@ class DetectionBasedDetector():
         self.device = device
         self.iou_threshold = iou_threshold
         self.normalization = model_chkp['configuration']['dataset']['normalization']
+        self.score_threshold = score_threshold
 
     def detect(self, img: np.ndarray):
         """Divides the image in patches, runs detection and applied over it NMS.
@@ -92,7 +96,9 @@ class DetectionBasedDetector():
 
         # perform NMS to avoid duplicated detections over the overlapped regions
         detections = dl_utils.non_max_supression(detections, 0.5)
-
+        if self.score_threshold > 0:
+            keep = np.where(detections[:, -1] >= self.score_threshold, True, False)
+            detections = detections[keep, :]
         return detections
 
     @staticmethod
