@@ -80,7 +80,7 @@ cd ../../
 
 ```bash
 cd deep_learning/detection_models &&
-wget --load-cookies /tmp/cookies.txt "https://docs.google.com/uc?export=download&confirm=$(wget --quiet --save-cookies /tmp/cookies.txt --keep-session-cookies --no-check-certificate 'https://docs.google.com/uc?export=download&id=' -O- | sed -rn 's/.*confirm=([0-9A-Za-z_]+).*/\1\n/p')&id=" -O detection_checkpoints.zip && rm -rf /tmp/cookies.txt &&
+wget --load-cookies /tmp/cookies.txt "https://docs.google.com/uc?export=download&confirm=$(wget --quiet --save-cookies /tmp/cookies.txt --keep-session-cookies --no-check-certificate 'https://docs.google.com/uc?export=download&id=1R8fxd_CdyG5ec1grobRUut8UqCKbVFdp' -O- | sed -rn 's/.*confirm=([0-9A-Za-z_]+).*/\1\n/p')&id=1R8fxd_CdyG5ec1grobRUut8UqCKbVFdp" -O detection_checkpoints.zip && rm -rf /tmp/cookies.txt &&
 unzip detection_checkpoints.zip &&
 rm -rf detection_checkpoints.zip &&
 cd ../../
@@ -88,10 +88,13 @@ cd ../../
 
 ### Machine Learning
 
-### Coments for developers:
-    I suggest using:
-        numpy docstring format
-        flake8 lintern
-    I suggest this extensions for VSCode:
-        autoDocstring - Python Docstring Generator
-        GitLens
+Still to be added
+
+#### Suggestion for contributers
+
+- numpy docstring format
+- flake8 lintern
+- useful VSCode extensions:
+  - autoDocstring
+  - Python Docstring Generator
+  - GitLens
