@@ -97,6 +97,15 @@ rm -rf ml_cascade_checkpoints.zip &&
 cd ../../
 ```
 
+### Example image
+
+```bash
+mkdir example_img
+cd example_img &&
+wget --load-cookies /tmp/cookies.txt "https://docs.google.com/uc?export=download&confirm=$(wget --quiet --save-cookies /tmp/cookies.txt --keep-session-cookies --no-check-certificate 'https://docs.google.com/uc?export=download&id=1VYPWmU2QuEZ3Ys9LhAsDZp19dZmaaT4r' -O- | sed -rn 's/.*confirm=([0-9A-Za-z_]+).*/\1\n/p')&id=1VYPWmU2QuEZ3Ys9LhAsDZp19dZmaaT4r" -O 24065734_5291e1aee2bbf5df_MG_L_CC_ANON.dcm && rm -rf /tmp/cookies.txt &&
+cd ../
+```
+
 ## Runing a full case
 
 ### AIA-ML
