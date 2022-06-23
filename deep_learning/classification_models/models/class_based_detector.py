@@ -34,7 +34,7 @@ best_models = {
         'nms': True,
         'iou_threshold': 1,
         'normalization': 'z_score',
-        'results_path': '/content/drive/MyDrive/calcification_detection/detections_dl/16_net2_07'
+        'results_path': thispath.parent.parent / 'detections_dl/16_net2_07'
     },
     32: {
         'checkpoint_path':
@@ -50,7 +50,7 @@ best_models = {
         'nms': True,
         'iou_threshold': 1,
         'normalization': 'z_score',
-        'results_path': '/content/drive/MyDrive/calcification_detection/detections_dl/32_net2_05'
+        'results_path': thispath.parent.parent / 'detections_dl/32_net2_05'
     },
     64: {
         'checkpoint_path':
@@ -66,7 +66,7 @@ best_models = {
         'nms': True,
         'iou_threshold': 1,
         'normalization': 'z_score',
-        'results_path': '/content/drive/MyDrive/calcification_detection/detections_dl/64_net2_03'
+        'results_path': thispath.parent.parent / 'detections_dl/64_net2_03'
     },
     224: {
         'checkpoint_path':
@@ -82,8 +82,7 @@ best_models = {
         'nms': True,
         'iou_threshold': 1,
         'normalization': 'z_score',
-        'results_path':
-            '/content/drive/MyDrive/calcification_detection/detections_dl/224_resnet50_05.pt'
+        'results_path': thispath.parent.parent / 'detections_dl/224_resnet50_05.pt'
     }
 }
 
