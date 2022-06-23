@@ -19,6 +19,7 @@ notebooks/develop_cropping_strategy.ipynb
 notebooks/develop_our_resnets.ipynb
 deep_learning/detection_models/config.yml
 deep_learning/classification_models/checkpoints
+deep_learning/detection_models/checkpoints
 notebooks/develop_complete_detector_dcm.ipynb
 # Byte-compiled / optimized / DLL files
 __pycache__/
