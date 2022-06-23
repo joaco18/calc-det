@@ -325,7 +325,7 @@ class CandidatesFeatureExtraction:
         Args:
             gabored_images (list): list of images filtered with Gabor kernels
         Returns:
-            np.ndarray: of 6_features*n_gabored_images 
+            np.ndarray: of 6_features*n_gabored_imagess
         """
         features = []
         for filtered_image in gabored_images:
