@@ -1,4 +1,3 @@
-from copy import deepcopy
 import pickle
 from pathlib import Path
 
@@ -61,7 +60,7 @@ class CascadeClassifier:
 
         features_to_predict = candidate_features[features_sets[features_set]]
         first_stage_scores = self.first_model.predict_proba(features_to_predict)[:, 1]
-        features_to_predict = features_to_predict[first_stage_scores > self.max_conf_thr_required, :]
+        features_to_predict = features_to_predict[first_stage_scores > self.max_conf_thr_required]
         return self.second_model.predict_proba(features_to_predict)[:, 1]
 
     def fit(
