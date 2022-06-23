@@ -60,6 +60,8 @@ class CascadeClassifier:
                 'Model nor trained nor loaded. Provide a path to the model or perform training.')
 
         features_to_predict = candidate_features[features_sets[features_set]]
+        first_stage_scores = self.first_model.predict_proba(features_to_predict)[:, 1]
+        features_to_predict = features_to_predict[first_stage_scores > self.max_conf_thr_required, :]
         return self.second_model.predict_proba(features_to_predict)[:, 1]
 
     def fit(
@@ -170,7 +172,7 @@ class CascadeClassifier:
         train_df = pd.concat(
             [positive_train_part, negative_train_part]).sample(frac=1.)
 
-        # train the final first stage model with all the folds data and use the 
+        # train the final first stage model with all the folds data and use the
         # pre-determined threshold to define the easy negatives.
         self.first_model = Pipeline([('scaler', MinMaxScaler()), ('svc', clf)])
         self.first_model.fit(train_df[features], train_df.label)
