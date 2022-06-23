@@ -33,7 +33,7 @@ class CascadeClassifier:
         """Predicts the probablility of given candidates to contain a mC
         Args:
             candidate_features (pd.DataFrame): containing candidate features and metadata.
-                Output of CandidatesFeatureExtraction().extract_features()
+                Output of CandidatesFeatureExtraction_MP().extract_features()
             feature_set (str, optional): Names of features to be used by models.
                 Defaults to 'all_features'. Options are:
                     ['fos', 'gabor', 'wavelet', 'haar', 'all_features']
@@ -71,7 +71,7 @@ class CascadeClassifier:
         Args:
             clf: sklearn classification model instance used for fit/predict.
             train_features (pd.DataFrame): containing candidate features and metadata.
-                Output of CandidatesFeatureExtraction().extract_features()
+                Output of CandidatesFeatureExtraction_MP().extract_features()
                 Check feature_e
             features (list[str]): names of features to be used by models
             sens_threshold (float): desired threshold of kept sensitivity
