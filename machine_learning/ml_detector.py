@@ -9,7 +9,7 @@ from general_utils.utils import non_max_supression
 
 class DetectorML:
     """Calcification Detection Model based on Grayscale Morphology"""
-    def __init__(self, cascade_model_path):
+    def __init__(self, cascade_model_path: str):
         """Constructor for the DetectorML class
 
         Args:
