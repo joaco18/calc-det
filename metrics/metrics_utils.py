@@ -373,7 +373,7 @@ def get_tp_fp_fn_center_patch_criteria(
     make an easier computation of froc NMS this duplicates are kept. If they are not desired
     performing a drop_duplicates(subset=['repeted_idxs']) will do the job.
     Args:
-        candidates (np.ndarray): [x, y, radius]
+        candidates (np.ndarray): [x, y, radius, (scores)]
         roi_mask (np.ndarray): mask of lesion labels (each one identified independently)
         center_region_size (int): region in the center of the patch to consider for labeling.
             If set to None the hole patch is considered for the intersection.
@@ -509,8 +509,9 @@ def get_froc_df_of_many_imgs_features(
     """
     # Fill metadata for TP and FP
     df = candidates_df.copy()
-    values = candidates_df.loc[:, 'candidate_coordinates'].values.copy()
-    df.loc[:, ['x', 'y', 'radius']] = np.vstack(values)
+    if 'candidate_coordinates' in candidates_df.columns:
+        values = candidates_df.loc[:, 'candidate_coordinates'].values.copy()
+        df.loc[:, ['x', 'y', 'radius']] = np.vstack(values)
     df.loc[df.label, 'detection_labels'] = 'TP'
     df.loc[~df.label, 'detection_labels'] = 'FP'
     df.loc[:, 'pred_scores'] = predictions
@@ -622,3 +623,19 @@ def non_maximum_suppression_w_labels(froc_df: pd.DataFrame):
     filtered_froc_df = pd.concat(filtered_froc_df, axis=0, ignore_index=True)
 
     return filtered_froc_df
+
+
+def best_th_froc_curve(tprs: np.ndarray, fppis: np.ndarray, thresholds: np.ndarray):
+    """Gets the best compromise threshold based on froc curve (top left point)
+    Args:
+        tprs (np.ndarray): tpr coming from froc curve function
+        fppis (np.ndarray): fppi coming from froc curve function
+        thresholds (np.ndarray): thresholds coming from froc curve function
+    Returns:
+        th, tpr, fppi
+    """
+    idx = np.argmax(tprs - fppis/fppis.max())
+    th = thresholds[idx]
+    tpr = tprs[idx]
+    fppi = fppis[idx]
+    return th, tpr, fppi

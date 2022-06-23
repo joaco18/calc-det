@@ -12,4 +12,6 @@ pywavelets == 1.1.1
 seaborn
 tqdm
 xgboost
-pyforest
+transformers
+tensorboard
+pycocotools

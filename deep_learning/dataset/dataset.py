@@ -61,7 +61,7 @@ class INBreast_Dataset_pytorch(INBreast_Dataset):
         self.crop_size = crop_size
         self.half_crop = int(self.crop_size // 2)
         self.center_noise = center_noise
-      	self.detection_bbox_size = detection_bbox_size
+        self.detection_bbox_size = detection_bbox_size
 
         if patch_images_path is not None:
             self.patch_img_path = patch_images_path/'patches'
@@ -94,6 +94,18 @@ class INBreast_Dataset_pytorch(INBreast_Dataset):
 
     def __len__(self):
         return len(self.df)
+
+    def correct_boxes(self, center, image_shape):
+        """ Cropes a bounding box of fixed size around given center
+        Args:
+            center (tuple): (x coordinate, y coordinate)
+            image_shape (tuple): shape of image to crop patches from
+        Returns:
+            x1, y1, x1, y2: coordinates of the patch to crop
+        """
+        x1, x2, y1, y2 = utils.patch_coordinates_from_center(
+            center, image_shape, self.detection_bbox_size)
+        return [x1, y1, x2, y2]
 
     def __getitem__(self, idx):
         sample = {}
@@ -138,13 +150,12 @@ class INBreast_Dataset_pytorch(INBreast_Dataset):
             if self.extract_patches_method == 'all':
                 # form a target array with coco-formated keys
                 target = {}
-
                 target['boxes'] = [
                     self.correct_boxes((bbox[0], bbox[1]), mask.shape)
                     for bbox in sample['lesion_centers']]
                 target['boxes'] = torch.as_tensor(target['boxes'], dtype=torch.float32)                
                 target['labels'] = torch.ones((len(target['boxes']),), dtype=torch.int64)
-                target['image_id'] = torch.as_tensor(self.df['img_id'].iloc[idx])
+                target['image_id'] = torch.as_tensor([idx], dtype=torch.int64)
                 boxes_areas = [(b[3] - b[1])*(b[2] - b[0]) for b in target['boxes']]
                 target['area'] = torch.as_tensor(boxes_areas)
                 # iscrowd=True bboxes are ignored during validation (coco tools definition)
@@ -164,20 +175,18 @@ class INBreast_Dataset_pytorch(INBreast_Dataset):
                         center_noise_x = np.random.randint(-offset, offset, dtype=int)
                         center_noise_y = np.random.randint(-offset, offset, dtype=int)
                         center[0], center[1] = center[0]+center_noise_x, center[1]+center_noise_y
-                        sample['img'] = sample['img'][
-                            :,
-                            center[1] - self.half_crop: center[1] + self.crop_size - self.half_crop,
-                            center[0] - self.half_crop: center[0] + self.crop_size - self.half_crop]
+                        x1, x2, y1, y2 = utils.patch_coordinates_from_center(
+                            center, (self.patch_size, self.patch_size), self.crop_size)
+                        sample['img'] = sample['img'][:, y1:y2, x1:x2]
                 else:
                     sample['lesion_center'] = np.asanyarray([-1, -1])
                     center_x = np.random.randint(
                         self.half_crop+1, high=self.patch_size-self.half_crop+1, dtype=int)
                     center_y = np.random.randint(
                         self.half_crop+1, high=self.patch_size-self.half_crop+1, dtype=int)
-                    sample['img'] = sample['img'][
-                        :,
-                        center_y - self.half_crop: center_y + self.crop_size - self.half_crop,
-                        center_x - self.half_crop: center_x + self.crop_size - self.half_crop]
+                    x1, x2, y1, y2 = utils.patch_coordinates_from_center(
+                        (center_x, center_y), (self.patch_size, self.patch_size), self.crop_size)
+                    sample['img'] = sample['img'][:, y1:y2, x1:x2]
                 del sample['lesion_bboxes'], sample['lesion_centers'], sample['labels']
         return sample
 
@@ -189,7 +198,8 @@ class ImgCropsDataset():
         img: np.ndarray,
         patch_size: int = 224,
         stride: int = 100,
-        min_breast_fraction_patch: float = None
+        min_breast_fraction_patch: float = None,
+        normalization: str = 'z_score'
     ):
         """
         Args:
@@ -203,6 +213,7 @@ class ImgCropsDataset():
         self.patch_size = patch_size
         self.stride = stride
         self.min_breast_frac = min_breast_fraction_patch
+        self.normalization = normalization
 
         # extract patches equally from image and the mask
         img = padd_image(img, self.patch_size)
@@ -232,7 +243,10 @@ class ImgCropsDataset():
     def __getitem__(self, idx):
         img = self.image_patches[idx, :, :]
         if img.any():
-            img = utils.min_max_norm(img, 1).astype('float32')
+            if self.normalization == 'min_max':
+                img = utils.min_max_norm(img, 1).astype('float32')
+            elif self.normalization == 'z_score':
+                img = utils.z_score_norm(img, non_zero_region=True)
         else:
             img = img.astype('float32')
 
