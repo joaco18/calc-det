@@ -2,7 +2,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, Path.cwd().parent)
 import cv2
-import pickle 
+import pickle
 import logging
 import numpy as np
 import multiprocessing as mp
@@ -15,8 +15,6 @@ from skimage.feature import graycomatrix, graycoprops, haar_like_feature_coord
 import general_utils.utils as utils
 from feature_extraction.haar_features.haar_extractor import \
     extract_haar_feature_image_skimage, HaarFeatureExtractor
-
-import feature_extraction.haar_features.haar_modules as hm
 
 # machine epsillon used to avoid zero errors
 epsillon = np.finfo(float).eps
@@ -36,10 +34,11 @@ GABOR_PARAMS = {'scale': 2, 'orientation': 3,
 WAVELET_PARAMS = {'angles': [0, np.pi/4, np.pi/2]}
 
 this_path = Path(__file__).parent.resolve()
-haar_feat_path = this_path.parent / 'data/final_haar_500_feat_selection_gsm.p' #'/home/vzalevskyi/projects/calc-det/data/final_haar_500_feat_selection_gsm.p'
+#'/home/vzalevskyi/projects/calc-det/data/final_haar_500_feat_selection_gsm.p'
+haar_feat_path = this_path.parent / 'data/final_haar_500_feat_selection_gsm.p'
 with open(haar_feat_path, 'rb') as f:
     selection = pickle.load(f)
-    
+
 HAAR_PARAMS = {
     'skimage': {
         'feature_type': selection['skimage_haar_feature_types_sel'],
@@ -168,9 +167,9 @@ class CandidatesFeatureExtraction:
             features.append(coords)
             features.append(((patch_y1, patch_y2), (patch_x1, patch_x2)))
             candidates_features.append(features)
-        
+
         candidates_features = np.asarray(candidates_features, dtype=object)
-        
+
         if self.haar_params:
             candidates_features = np.concatenate(
                 [features_haar, candidates_features], axis=1)
