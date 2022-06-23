@@ -16,7 +16,7 @@ from functools import partial
 
 import general_utils.utils as utils
 from deep_learning.dataset.dataset import ImgCropsDataset
-from deep_learning.dl_utils import get_model_from_checkpoint, non_max_supression
+from deep_learning.dl_utils import get_model_from_checkpoint
 
 
 best_models = {
@@ -263,7 +263,7 @@ class ClassificationBasedDetector():
                 self.img, self.saliency_map, self.bbox_size, self.threshold)
             # nms
             if self.nms:
-                detections = non_max_supression(detections, self.iou_threshold)
+                detections = utils.non_max_supression(detections, self.iou_threshold)
             return detections
 
 
@@ -286,7 +286,7 @@ class MultiScaleClassificationBasedDetector():
             threshold (float, optional): Threshold to binarize predictions. Defaults to 0.
             nms (bool, optional): Whether to do nms or not. Defaults to True
             iou_threshold (float, optional): IoU Threshold to be used in NMS. Defaults to 1.
-            merge_type (str, optional): Whether to combine the saliency maps with 'max' or 
+            merge_type (str, optional): Whether to combine the saliency maps with 'max' or
                 'mean' operation. Defaults to 'mean'.
         """
         self.bbox_size = bbox_size
@@ -334,5 +334,5 @@ class MultiScaleClassificationBasedDetector():
             self.img, self.saliency_map, self.bbox_size, self.threshold)
         # nms
         if self.nms:
-            detections = non_max_supression(detections, self.iou_threshold)
+            detections = utils.non_max_supression(detections, self.iou_threshold)
         return detections
