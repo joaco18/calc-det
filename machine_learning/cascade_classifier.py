@@ -65,7 +65,6 @@ class CascadeClassifier:
         predictions = self.second_model.predict_proba(features_to_predict)[:, 1]
         logging.getLogger().setLevel(logging.INFO)
         return predictions
-        
 
     def fit(
         self, clf, train_features: pd.DataFrame, features: list, sens_threshold: float,
@@ -220,7 +219,7 @@ class CascadeClassifier:
         msg = (
             f'Selected keep_sens_thr={self.sens_threshold}\n'
             f'Max_conf_thr_required to keep given sensitivity is {self.max_conf_thr_required:.5f}\n'
-            f'Filtering out all candidates with confidence <={self.max_conf_thr_required:.5f} '
-            f'is estimated to reduce FP by {100*filtered_fp:.2f} %'
+            # f'Filtering out all candidates with confidence <={self.max_conf_thr_required:.5f} '
+            # f'is estimated to reduce FP by {100*filtered_fp:.2f} %'
         )
         logging.info(msg)
