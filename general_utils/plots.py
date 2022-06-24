@@ -414,10 +414,11 @@ def add_detections_overlay(
         tl = (int(x1), int(y1))
         br = (int(x2), int(y2))
         image = cv2.rectangle(image, tl, br, colors_code[label], 2)
-        if label == 'FN':
-            bbox_tag = '-1' if score is None else f'{score:.3f}'
+        if (label == 'FN') and ((score is None) or math.isnan(score)):
+            bbox_tag = '-1'
         else:
             bbox_tag = f'{score:.3f}'
+
         y = tl[1]-15 if (tl[1]-15) > 15 else tl[1]+15
         image = cv2.putText(
             image, bbox_tag, (int(x1), int(y)),
