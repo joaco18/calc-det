@@ -9,7 +9,7 @@ import seaborn as sns
 from feature_extraction.haar_features.haar_modules import Feature
 from functools import partial
 from matplotlib.lines import Line2D
-from metrics.metrics_utils import get_tp_fp_fn_center_patch_criteria
+import metrics.metrics_utils as metrics_utils
 from scipy.ndimage.morphology import binary_fill_holes
 from sklearn.metrics import auc
 
@@ -378,12 +378,17 @@ def add_detections_overlay(
 
     # label candidates
     if need_labeling:
-        tp, fp, fn, ignored_candidates = get_tp_fp_fn_center_patch_criteria(
+        tp, fp, fn, ignored_candidates = metrics_utils.get_tp_fp_fn_center_patch_criteria(
             candidates, mask, None, patch_size=14, use_euclidean_dist=True, scores_passed=True)
-        candidates = pd.DataFrame()
-        for frame in [tp, fp, fn]:
-            candidates = pd.concat([candidates, frame])
-    candidates = candidates[['x', 'y', 'score', 'label']]
+
+        candidates = pd.concat([tp, fp], axis=0, ignore_index=True)
+
+        # generate standard dataframe
+        froc_df = metrics_utils.get_froc_df_of_img(
+            candidates, fn, candidates['score'], 'image_id', False)
+        froc_df = metrics_utils.non_maximum_suppression_w_labels(froc_df)
+        candidates = froc_df.loc[:, ['x', 'y', 'score', 'label']]
+        candidates = pd.concat([candidates, fn.loc[:, ['x', 'y', 'score', 'label']]])
 
     # adjust labels based on confidence threshold
     new_fn_position = (candidates.label == 'TP') & (candidates.score < conf_thr)
@@ -396,7 +401,7 @@ def add_detections_overlay(
         utils.patch_coordinates_from_center, image_shape=image.shape, patch_size=14+k)
     centers_it = zip(candidates['x'].values, candidates['y'].values)
     bbox_coordinates = [get_bbox_from_center(center) for center in centers_it]
-    candidates[['x1', 'x2', 'y1', 'y2']] = bbox_coordinates
+    candidates.loc[:, ['x1', 'x2', 'y1', 'y2']] = bbox_coordinates
     candidates.drop(columns=['x', 'y'], inplace=True)
 
     # convert the image to rgb if necessary
