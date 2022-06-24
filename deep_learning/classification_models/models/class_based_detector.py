@@ -305,7 +305,8 @@ class MultiScaleClassificationBasedDetector():
                 ClassificationBasedDetector(model, in_multiscale=True, **model_params)
 
     def detect(
-        self, img: np.ndarray, image_id: str, final_saliency_path: Path = None, store: bool = False
+        self, img: np.ndarray, image_id: str='image_id',
+        final_saliency_path: Path = None, store: bool = False
     ):
         self.img = img
         if (final_saliency_path is None) or (not final_saliency_path.exists()):

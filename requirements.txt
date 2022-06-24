@@ -16,3 +16,4 @@ transformers
 tensorboard
 pycocotools
 scikit-learn-intelex
+gdown

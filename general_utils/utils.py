@@ -443,7 +443,7 @@ def detections_mask(
         patch_coordinates_from_center, image_shape=image.shape, patch_size=14+k)
     centers_it = zip(candidates['x'].values, candidates['y'].values)
     bbox_coordinates = [get_bbox_from_center(center) for center in centers_it]
-    candidates[['x1', 'x2', 'y1', 'y2']] = bbox_coordinates
+    candidates.loc[:, ['x1', 'x2', 'y1', 'y2']] = bbox_coordinates
     candidates.drop(columns=['x', 'y'], inplace=True)
     mask = np.zeros(image.shape, dtype='uint8')
 
@@ -461,7 +461,7 @@ def detections_mask(
 
 def store_as_dcm(
     image: np.ndarray, detections_df: pd.DataFrame, original_dcm_filepath: Path,
-    output_filepath: Path, breast_bbox: tuple
+    output_filepath: Path, breast_bbox: tuple, k: int=15
 ):
     """Stores the bboxes mask as dcm image in order to visualize them in dicom viewer
     Args:
@@ -471,6 +471,7 @@ def store_as_dcm(
             generated from the info kept in the img_df of dataset
         output_filepath (Path): Path to the destiny dcm file
         breast_bbox (tuple): Bbox of the breast region in the original image
+        k (int, optional): bbox extra border. Defaults to  px
     """
     assert original_dcm_filepath.exists(), \
         f'Dcm image missing check the path {original_dcm_filepath}'
@@ -506,3 +507,21 @@ def store_as_dcm(
 
     # write the image
     sitk.WriteImage(complete_mask, str(output_filepath))
+
+
+def is_right(mask: np.ndarray):
+    """Check if breast mask is right or left"""
+    # Get number of rows and columns in the image.
+    _, ncols = mask.shape
+    x_center = ncols // 2
+
+    # Sum down each column.
+    col_sum = mask.sum(axis=0)
+
+    left_sum = sum(col_sum[0:x_center])
+    right_sum = sum(col_sum[x_center:-1])
+
+    if left_sum < right_sum:
+        return True
+    else:
+        return False
