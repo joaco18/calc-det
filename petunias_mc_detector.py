@@ -28,7 +28,7 @@ def main():
     parser.add_argument(
         "--detector-type", help="One of: ['aia_ml', 'classification_dl', 'detection_dl']")
     parser.add_argument(
-        "--batch_size", default=0, help="Size of batch to use in dl")
+        "--batch-size", default=0, help="Size of batch to use in dl")
     parser.add_argument(
         "--ouput-path", help="Directory where the detections masks is going to be stored")
     parser.add_argument(
