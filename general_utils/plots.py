@@ -16,7 +16,11 @@ from sklearn.metrics import auc
 import general_utils.utils as utils
 
 cmap = plt.get_cmap("tab10")
-
+COLORS_CODE = {
+    'TP': (0, 255, 0),
+    'FP': (0, 0, 255),
+    'FN': (255, 0, 0)
+}
 
 def simple_im_show(img, figsize=(10, 10)):
     plt.figure(figsize=figsize)
@@ -370,12 +374,6 @@ def add_detections_overlay(
     Returns:
         np.ndarray: image with plotted labelled candidates (BGR)
     """
-    colors_code = {
-        'TP': (0, 255, 0),
-        'FP': (0, 0, 255),
-        'FN': (255, 0, 0)
-    }
-
     # label candidates
     if need_labeling:
         tp, fp, fn, ignored_candidates = metrics_utils.get_tp_fp_fn_center_patch_criteria(
@@ -413,7 +411,7 @@ def add_detections_overlay(
     for idx, [score, label, x1, x2, y1, y2] in candidates.iterrows():
         tl = (int(x1), int(y1))
         br = (int(x2), int(y2))
-        image = cv2.rectangle(image, tl, br, colors_code[label], 2)
+        image = cv2.rectangle(image, tl, br, COLORS_CODE[label], 2)
         if (label == 'FN') and ((score is None) or math.isnan(score)):
             bbox_tag = '-1'
         else:
@@ -422,7 +420,7 @@ def add_detections_overlay(
         y = tl[1]-15 if (tl[1]-15) > 15 else tl[1]+15
         image = cv2.putText(
             image, bbox_tag, (int(x1), int(y)),
-            cv2.FONT_HERSHEY_SIMPLEX, 1, colors_code[label], 2)
+            cv2.FONT_HERSHEY_SIMPLEX, 1, COLORS_CODE[label], 2)
 
     image = cv2.putText(image, 'TP', (image.shape[1]-150, 100),
                         cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
@@ -434,3 +432,64 @@ def add_detections_overlay(
                         cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
 
     return image
+
+
+def plot_random_examples_of_label(
+    db, froc_df: pd.DataFrame, label: str,
+    threshold: float, grater: bool, number: int = 5, random_state: int = 0
+):
+    """ Plot an array of examples of detections matching the parameters passed.
+    Args:
+        db (INBreast_Dataset): dataset object wiht the images
+        froc_df (pd.DataFrame): standard froc dataframe, check metrics/metrics_utils.py
+        label (str): one of ['TP', 'FP', 'TN']
+        threshold (float): threshold to be use over the confidence scores
+            of the prediction
+        grater (bool): if greater or smaller than threshold
+        number (int, optional): number of patches to plot. Defaults to 5.
+        random_state (int, optional): random state fixed during sampling.
+            Defaults to 0.
+    """
+
+    _, ax = plt.subplots(1, number, figsize=(25, 5))
+    if grater:
+        selection = (froc_df.label == 'TP') & (froc_df.pred_scores >= threshold)
+    else:
+        selection = (froc_df.label == 'TP') & (froc_df.pred_scores < threshold)
+    if label == 'FN':
+        selection = (froc_df.label == 'FN')
+    sample = froc_df.loc[selection].sample(number, random_state=random_state)
+    for k, (idx, row) in enumerate(sample.iterrows()):
+        # get the index of the image in the dataset df and get the image
+        df_idx = db.df.loc[db.df.img_id == row['img_id']].index[0]
+        case = db[df_idx]
+        image = case['img']
+        # get the center of the detection
+        center = (row['x'], row['y'])
+        # get the bbox and the patch crop
+        bbox_coords = np.asarray(
+            utils.patch_coordinates_from_center(center, image.shape, 20), dtype=int)
+        patch_coords = np.asarray(
+            utils.patch_coordinates_from_center(center, image.shape, 80), dtype=int)
+        # convert img to rgb
+        if len(image.shape) < 3:
+            image = utils.min_max_norm(image, 255).astype('uint8')
+            image = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
+        # Add rectangle and score
+        if label == 'TP':
+            color_label = 'FN' if label == 'TP' and not grater else 'TP'
+        else:
+            color_label = label
+        tl = (bbox_coords[0], bbox_coords[2])
+        br = (bbox_coords[1], bbox_coords[3])
+        image = cv2.rectangle(image, tl, br, COLORS_CODE[color_label], 1)
+        y = tl[1]-2 if (tl[1]-2) > 2 else tl[1]+2
+        legend = '-1' if label == 'FN' else f'{row["score"]:.4f}'
+        image = cv2.putText(image, legend, (tl[0], int(y)),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.4, COLORS_CODE[color_label], 1)
+        # crop the patch
+        image = image[patch_coords[2]:patch_coords[3], patch_coords[0]:patch_coords[1], :]
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        ax[k].imshow(image)
+        ax[k].axis('off')
+    plt.show()
