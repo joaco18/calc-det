@@ -25,43 +25,15 @@ Install requirements:
 pip install -r requirements.txt
 ```
 
-## To get the database
-
-1.Download the raw database from the original [Drive](https://drive.google.com/file/d/19n-p9p9C0eCQA1ybm6wkMo-bbeccT_62/view) from the authors.
-
-2.Extract the zipped images in a "data" directory inside this same directory, the directory structure should be the following:
-
-```
-calc-det
-    └── data
-        └── INbreast Release 1.0
-                ├── AllDICOMs
-                |    ├── files.dcm
-                |    └── ...
-                ├── AllROI
-                |    ├── files.roi
-                |    └── ...
-                ├── AllXML
-                |    ├── files.xml
-                |    └── ...
-                ├── MedicalReports
-                |    ├── files.txt
-                |    └── ...
-                ├── PectoralMuscle
-                |    ├── Pectoral Muscle ROI
-                |    |   └── files.roi
-                |    └── Pectoral Muscle XML
-                |        └── files.xml
-                ├── INbreast.csv
-                ├── inreast.pdf
-                ├── INreast.xls
-                └── README.txt
-```
-
-3.Run the following command:
+## To get and turn to a useful format the INBreast database
 
 ```bash
-python database/parsing_metadata.py --ib-path data/INbreast\ Release\ 1.0/ --rp --v --cb --pect-musc-mask
+cd data &&
+gdown https://drive.google.com/uc?id=1ebw9N2vZY19TuELBZb39eAJhPjY1eFZX &&
+unzip 'INbreast Release 1.0.zip' &&
+rm -rf 'INbreast Release 1.0.zip' &&
+cd ../ &&
+python database/parsing_metadata.py --ib-path data/INbreast\ Release\ 1.0/ --rp --cb --pect-musc-mask
 ```
 
 ## To get the checkpoints of pretrained models
@@ -69,29 +41,31 @@ python database/parsing_metadata.py --ib-path data/INbreast\ Release\ 1.0/ --rp 
 ### Deep learning detection by classification
 
 ```bash
-cd deep_learning/classification_models &&
-wget --load-cookies /tmp/cookies.txt "https://docs.google.com/uc?export=download&confirm=$(wget --quiet --save-cookies /tmp/cookies.txt --keep-session-cookies --no-check-certificate 'https://docs.google.com/uc?export=download&id=16BbvvZcS2Qx421v9QKpKH4JrVKF1Efcf' -O- | sed -rn 's/.*confirm=([0-9A-Za-z_]+).*/\1\n/p')&id=16BbvvZcS2Qx421v9QKpKH4JrVKF1Efcf" -O classification_checkpoints.zip && rm -rf /tmp/cookies.txt &&
+mkdir deep_learning/classification_models/checkpoints &&
+cd deep_learning/classification_models/checkpoints &&
+gdown https://drive.google.com/uc?id=16BbvvZcS2Qx421v9QKpKH4JrVKF1Efcf &&
 unzip classification_checkpoints.zip &&
 rm -rf classification_checkpoints.zip &&
-cd ../../
+cd ../../../
 ```
 
 ### Deep learning detection with FasterRCNN
 
 ```bash
-cd deep_learning/detection_models &&
-wget --load-cookies /tmp/cookies.txt "https://docs.google.com/uc?export=download&confirm=$(wget --quiet --save-cookies /tmp/cookies.txt --keep-session-cookies --no-check-certificate 'https://docs.google.com/uc?export=download&id=1R8fxd_CdyG5ec1grobRUut8UqCKbVFdp' -O- | sed -rn 's/.*confirm=([0-9A-Za-z_]+).*/\1\n/p')&id=1R8fxd_CdyG5ec1grobRUut8UqCKbVFdp" -O detection_checkpoints.zip && rm -rf /tmp/cookies.txt &&
+mkdir deep_learning/detection_models/checkpoints &&
+cd deep_learning/detection_models/checkpoints &&
+gdown https://drive.google.com/uc?id=1R8fxd_CdyG5ec1grobRUut8UqCKbVFdp &&
 unzip detection_checkpoints.zip &&
 rm -rf detection_checkpoints.zip &&
-cd ../../
+cd ../../../
 ```
 
 ### Machine Learning
 
 ```bash
-mkdir machine_learning/checkpoints
+mkdir machine_learning/checkpoints &&
 cd machine_learning/checkpoints &&
-wget --load-cookies /tmp/cookies.txt "https://docs.google.com/uc?export=download&confirm=$(wget --quiet --save-cookies /tmp/cookies.txt --keep-session-cookies --no-check-certificate 'https://docs.google.com/uc?export=download&id=1v-nDrdt2ejno7QVZvgRbqIVM27ymx7ft' -O- | sed -rn 's/.*confirm=([0-9A-Za-z_]+).*/\1\n/p')&id=1v-nDrdt2ejno7QVZvgRbqIVM27ymx7ft" -O ml_cascade_checkpoints.zip && rm -rf /tmp/cookies.txt &&
+gdown https://drive.google.com/uc?id=1v-nDrdt2ejno7QVZvgRbqIVM27ymx7ft &&
 unzip ml_cascade_checkpoints.zip &&
 rm -rf ml_cascade_checkpoints.zip &&
 cd ../../
@@ -100,9 +74,9 @@ cd ../../
 ### Example image
 
 ```bash
-mkdir example_img
+mkdir example_img &&
 cd example_img &&
-wget --load-cookies /tmp/cookies.txt "https://docs.google.com/uc?export=download&confirm=$(wget --quiet --save-cookies /tmp/cookies.txt --keep-session-cookies --no-check-certificate 'https://docs.google.com/uc?export=download&id=1VYPWmU2QuEZ3Ys9LhAsDZp19dZmaaT4r' -O- | sed -rn 's/.*confirm=([0-9A-Za-z_]+).*/\1\n/p')&id=1VYPWmU2QuEZ3Ys9LhAsDZp19dZmaaT4r" -O 24065734_5291e1aee2bbf5df_MG_L_CC_ANON.dcm && rm -rf /tmp/cookies.txt &&
+gdown https://drive.google.com/uc?id=1VYPWmU2QuEZ3Ys9LhAsDZp19dZmaaT4r &&
 cd ../
 ```
 
