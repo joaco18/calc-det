@@ -96,7 +96,7 @@ class DetectionBasedDetector():
         detections = np.concatenate([centers, detections], axis=1)
 
         # perform NMS to avoid duplicated detections over the overlapped regions
-        detections = utils.non_max_supression(detections, 0.5)
+        detections = utils.non_max_supression(detections, self.iou_threshold)
         if self.score_threshold > 0:
             keep = np.where(detections[:, -1] >= self.score_threshold, True, False)
             detections = detections[keep, :]
