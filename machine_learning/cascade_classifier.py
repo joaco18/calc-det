@@ -29,7 +29,7 @@ class CascadeClassifier:
             self.first_model = None
             self.second_model = None
 
-    def predict(self, candidate_features: pd.DataFrame, features_set: str = 'all_features'):
+    def predict(self, candidate_features: pd.DataFrame, features_set: str = 'all_features', selected_cand_mask: bool = False):
         """Predicts the probablility of given candidates to contain a mC
         Args:
             candidate_features (pd.DataFrame): containing candidate features and metadata.
@@ -37,8 +37,14 @@ class CascadeClassifier:
             feature_set (str, optional): Names of features to be used by models.
                 Defaults to 'all_features'. Options are:
                     ['fos', 'gabor', 'wavelet', 'haar', 'all_features']
+            selected_cand_mask (bool, optional): If True, will return the indices
+                of selected_candidates after 1st stage filtering. Defaults to False.
         Returns:
-            np.ndarray: Probablilities of candidates being positive (containing mC).
+            np.ndarray: Probablilities of candidates being positive (containing mC)
+                if selected_cand_mask is False
+            (np.ndarray, np.ndarray): Probablilities of candidates being positive 
+                (containing mC) and indices of selected candidates after 1st stage
+                if selected_cand_mask is True
         """
 
         # define the feature groups
@@ -64,7 +70,14 @@ class CascadeClassifier:
         features_to_predict = features_to_predict[first_stage_scores > self.max_conf_thr_required]
         predictions = self.second_model.predict_proba(features_to_predict)[:, 1]
         logging.getLogger().setLevel(logging.INFO)
-        return predictions
+        
+        if selected_cand_mask:
+            # return the predictions and the indices of selected candidates
+            # since the number of selected candidates can be different 
+            # from the number passed to predict
+            return predictions, (first_stage_scores > self.max_conf_thr_required).astype(bool)
+        else:
+            return predictions
 
     def fit(
         self, clf, train_features: pd.DataFrame, features: list, sens_threshold: float,
