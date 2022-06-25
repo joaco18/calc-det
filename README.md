@@ -65,7 +65,7 @@ cd ../../../
 ```bash
 mkdir machine_learning/checkpoints &&
 cd machine_learning/checkpoints &&
-gdown https://drive.google.com/uc?id=1v-nDrdt2ejno7QVZvgRbqIVM27ymx7ft &&
+gdown https://drive.google.com/uc?id=1TOJ3nsXnxfvMxygeXGQHxKH5-qOXeTBL &&
 unzip ml_cascade_checkpoints.zip &&
 rm -rf ml_cascade_checkpoints.zip &&
 cd ../../
