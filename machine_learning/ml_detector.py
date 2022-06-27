@@ -43,11 +43,11 @@ class DetectorML:
         cand_features = self.feature_extractor.extract_features(candidates, image)
         cand_features = pd.DataFrame(
             data=cand_features, columns=self.feature_extractor.feature_names)
-        
+
         prb, cand_mask = self.classifier.predict(cand_features, 'all_features', True)
-        cand_features = cand_features.loc[cand_mask,:].reset_index()
+        cand_features = cand_features.loc[cand_mask, :].reset_index()
         cand_features['confidence'] = prb
-        
+
         # perform NMS over detected candidates
         nms_bboxes = [[x[1][0], x[1][1], x[0][0], x[0][1], cand_features.confidence.values[xidx]]
                       for xidx, x in enumerate(cand_features.patch_coordinates.values)]

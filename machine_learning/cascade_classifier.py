@@ -24,6 +24,7 @@ class CascadeClassifier:
         if self.models_path.exists():
             logging.info('Loading model...')
             self.load_models()
+            logging.info('Model loaded...')
         else:
             logging.warning('Model not found. Need to call fit before predict.')
             self.first_model = None
@@ -223,16 +224,16 @@ class CascadeClassifier:
         self.c1_probas = probas
 
         self.max_conf_thr_required = self.c1_thrs[np.argmax(self.c1_tpr >= self.sens_threshold)]
-        total_fp = np.sum(~self.c1_labels)
+        # total_fp = np.sum(~self.c1_labels)
 
         # get fp filtered fraction
-        filtered_fp = np.sum((~self.c1_labels) & (
-            self.c1_probas <= self.max_conf_thr_required))/total_fp
+        # filtered_fp = np.sum((~self.c1_labels) & (
+        #     self.c1_probas <= self.max_conf_thr_required))/total_fp
 
-        msg = (
-            f'Selected keep_sens_thr={self.sens_threshold}\n'
-            f'Max_conf_thr_required to keep given sensitivity is {self.max_conf_thr_required:.5f}\n'
-            # f'Filtering out all candidates with confidence <={self.max_conf_thr_required:.5f} '
-            # f'is estimated to reduce FP by {100*filtered_fp:.2f} %'
-        )
-        logging.info(msg)
+        # msg = (
+        #     f'Selected keep_sens_thr={self.sens_threshold}\n'
+        #     f'Max_conf_thr_required to keep given sensitivity is {self.max_conf_thr_required:.5f}\n'
+        #     # f'Filtering out all candidates with confidence <={self.max_conf_thr_required:.5f} '
+        #     # f'is estimated to reduce FP by {100*filtered_fp:.2f} %'
+        # )
+        # logging.info(msg)
