@@ -452,12 +452,13 @@ def plot_random_examples_of_label(
     """
 
     _, ax = plt.subplots(1, number, figsize=(25, 5))
-    if grater:
-        selection = (froc_df.label == 'TP') & (froc_df.pred_scores >= threshold)
-    else:
-        selection = (froc_df.label == 'TP') & (froc_df.pred_scores < threshold)
     if label == 'FN':
         selection = (froc_df.label == 'FN')
+    else:
+        if grater:
+            selection = (froc_df.label == label) & (froc_df.pred_scores >= threshold)
+        else:
+            selection = (froc_df.label == label) & (froc_df.pred_scores < threshold)
     sample = froc_df.loc[selection].sample(number, random_state=random_state)
     for k, (idx, row) in enumerate(sample.iterrows()):
         # get the index of the image in the dataset df and get the image
