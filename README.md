@@ -2,7 +2,7 @@
 
 # Calcification Detection in Mammography Images
 
-## MAIA Master 2020
+## MAIA Master 2022
 
 ---------------------------------------
 
