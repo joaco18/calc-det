@@ -24,6 +24,7 @@ class CascadeClassifier:
         if self.models_path.exists():
             logging.info('Loading model...')
             self.load_models()
+            logging.info('Model loaded...')
         else:
             logging.warning('Model not found. Need to call fit before predict.')
             self.first_model = None
