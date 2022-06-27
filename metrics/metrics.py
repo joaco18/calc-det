@@ -123,7 +123,7 @@ def fp_per_unit_area(image_shape, no_fp):
 
 
 def froc_curve(
-    froc_df: pd.DataFrame, thresholds: np.ndarray = None, cut_on_50fpi: bool = False,
+    froc_df: pd.DataFrame, thresholds: np.ndarray = None, cut_on_50fpi: bool = True,
     non_max_supression: bool = True
 ):
     """Using the complete dataset for froc computation containing all the images, obtains the
@@ -232,7 +232,11 @@ def froc_curve_bootstrap(
     sensitivities = np.zeros((n_sets, len(thresholds)))
     avgs_fp_per_image = np.zeros((n_sets, len(thresholds)))
     for i in range(n_sets):
-        sensitivities[i, :], avgs_fp_per_image[i, :], _ = res[i]
+        # in the case of bootstrapped frocs cut at 50fpi
+        # not all thresholds are present in froc dfs
+        # therefore need to work only the thresholds up to 50 fpi
+        sensitivities_part, avgs_fp_per_image_part, __ = res[i]
+        sensitivities[i, :len(sensitivities_part)], avgs_fp_per_image[i, :len(avgs_fp_per_image_part)] = sensitivities_part, avgs_fp_per_image_part
 
     # Compute summaries
     avg_sensitivities = np.mean(sensitivities, axis=0)

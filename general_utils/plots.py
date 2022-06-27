@@ -210,8 +210,7 @@ def plot_froc(
 def plot_bootstrap_froc(
     fpis: np.ndarray, tprs: np.ndarray, std_tprs: np.ndarray,
     total_mC: int = None, label: str = '',  ax: int = None,
-    title: str = None, cut_on_50fpi: bool = True
-):
+    title: str = None, cut_on_50fpi: bool = True, color=0):
     """Plot FROC curve
     Args:
         fpis (np.ndarray): Average false positives per image at different thresholds
@@ -223,7 +222,8 @@ def plot_bootstrap_froc(
         ax (bool, optional): Whether to plot the figure in the ax of another plot.
             Defaults to None.
         title (str, optional): Defaults to None.
-        cut_on_50fpi (bool): whether to cut the froc l¿plt at 50fpi. Defaults to True
+        cut_on_50fpi (bool): whether to cut the froc polt at 50fpi. Defaults to True
+        color (int): color index from cmap to use. Defaults to 0
     """
     max_tprs = tprs + std_tprs
     min_tprs = tprs - std_tprs
@@ -240,17 +240,51 @@ def plot_bootstrap_froc(
         ax.set_title(title)
     else:
         ax.set_title('FROC curve')
-    ax.plot(fpis, tprs, c=cmap(0))
+    plot = ax.plot(fpis, tprs, c=cmap(color))
     if cut_on_50fpi:
         ax.set_xlim(-0.01, 50)
-    ax.fill_between(fpis, min_tprs, max_tprs, alpha=0.3, color=cmap(0))
+    ax.fill_between(fpis, min_tprs, max_tprs, alpha=0.3, color=cmap(color))
     ax.set_ylim((0, 1))
-    ax.legend([f"{label} mean-AUC: {auc(fpis/fpis.max(), tprs):.4f}"])
+    # ax.legend([f"{label} mean-AUC: {auc(fpis/fpis.max(), tprs):.4f}"])
     sns.despine()
     if ax_ is None:
         plt.show()
+    return plot
 
+def plot_several_bootstrapped_frocs(bootstraped_results):
+    f, ax = plt.subplots(1, 1, figsize=(10, 10))
+    ax.set_xlabel('FPpI')
+    legend = []
+    lines = []
+    for k, (label, data_) in enumerate(bootstraped_results.items()):
+        avg_avgs_fp_per_image = np.asarray(data_['avg_fp_per_image'])
+        avg_sensitivities = np.asarray(data_['sens'])
+        std_sensitivities = np.asarray(data_['std'])
+        
+        min_sens = avg_sensitivities - std_sensitivities
+        max_sens = avg_sensitivities + std_sensitivities
+        
+        fpi50_maxidx = np.argmin(avg_avgs_fp_per_image<avg_avgs_fp_per_image.max())
+        
+        min_auc = auc(avg_avgs_fp_per_image[:fpi50_maxidx]/avg_avgs_fp_per_image[:fpi50_maxidx].max(), min_sens[:fpi50_maxidx])
+        max_auc = auc(avg_avgs_fp_per_image[:fpi50_maxidx]/avg_avgs_fp_per_image[:fpi50_maxidx].max(), max_sens[:fpi50_maxidx])
+        
+        std_auc = max_auc-min_auc
+        
+        line = plot_bootstrap_froc(avg_avgs_fp_per_image[:fpi50_maxidx], avg_sensitivities[:fpi50_maxidx], std_sensitivities[:fpi50_maxidx], ax=ax, color=k)
+        legend.append(label + f' AUC: {auc(avg_avgs_fp_per_image[:fpi50_maxidx]/avg_avgs_fp_per_image[:fpi50_maxidx].max(), avg_sensitivities[:fpi50_maxidx]):.4f} +- {std_auc:.4f}')
+        lines.append(line)
+        ax.set_ylim((0, 1))
+        ax.set_xlim(-0.01, 50)
+    sns.despine()
+    ax.set_title('Final FROC curve comparison on test set')
+    ax.set_ylabel('TPR (2119 MCs)')
 
+    ax.legend(handles=[x[0] for x in lines],labels=legend, loc='lower right')
+    plt.grid(True)
+    plt.rcParams.update({'font.size': 18})
+    plt.show()
+    
 def plot_several_frocs(
     data: dict, ax: int = None, title: str = None, cut_on_50fpi: bool = True
 ):
