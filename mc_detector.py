@@ -132,7 +132,7 @@ def main():
     output_filepath = Path(args.ouput_path) / f'{dcm_name}_{args.detector_type}_detections.dcm'
 
     detections_df = pd.DataFrame(detections, columns=['x', 'y', 'radius', 'score'])
-    utils.store_as_dcm(im_array, detections_df, dcm_path, output_filepath, tuple(bbox_orig))
+    utils.store_as_dcm(im_array, detections_df, dcm_path, output_filepath, tuple(bbox_orig), k=10)
 
     if args.store_csv:
         csv_filepath = Path(args.ouput_path) / f'{dcm_name}_{args.detector_type}_detections.csv'
