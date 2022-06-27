@@ -466,7 +466,7 @@ def detections_mask(
 
 def store_as_dcm(
     image: np.ndarray, detections_df: pd.DataFrame, original_dcm_filepath: Path,
-    output_filepath: Path, breast_bbox: tuple, k: int = 0
+    output_filepath: Path, breast_bbox: tuple, k: int = 10
 ):
     """Stores the bboxes mask as dcm image in order to visualize them in dicom viewer
     Args:
