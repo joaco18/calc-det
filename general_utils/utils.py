@@ -422,12 +422,13 @@ def non_max_supression(
 
 
 def detections_mask(
-    image: np.ndarray, candidates: pd.DataFrame, conf_thr: float = 0.1, k: int = 10
+    image: np.ndarray, candidates: pd.DataFrame, side: str, conf_thr: float = 0.1, k: int = 10
 ):
     """Labels the candidates and plots them accordingly over the provided image
     Args:
         image (np.ndarray): Image to plot the results
         candidates (pd.DataFrame): [x, y, radius, score]
+        side (str): One of 'R' or 'L'
         conf_thr (float, optional): final threshold to select candidates.
             Only those with confidence higher will be considered for labelling and
             display. Defaults to 0.1.
@@ -441,6 +442,10 @@ def detections_mask(
     # format candidate coordinates to plotting format
     get_bbox_from_center = partial(
         patch_coordinates_from_center, image_shape=image.shape, patch_size=14+k)
+
+    if side == 'R':
+        candidates.loc[:, 'x'] = image.shape[1] - candidates['x'].values
+
     centers_it = zip(candidates['x'].values, candidates['y'].values)
     bbox_coordinates = [get_bbox_from_center(center) for center in centers_it]
     candidates.loc[:, ['x1', 'x2', 'y1', 'y2']] = bbox_coordinates
@@ -461,7 +466,7 @@ def detections_mask(
 
 def store_as_dcm(
     image: np.ndarray, detections_df: pd.DataFrame, original_dcm_filepath: Path,
-    output_filepath: Path, breast_bbox: tuple, k: int=15
+    output_filepath: Path, breast_bbox: tuple, k: int = 0
 ):
     """Stores the bboxes mask as dcm image in order to visualize them in dicom viewer
     Args:
@@ -471,26 +476,21 @@ def store_as_dcm(
             generated from the info kept in the img_df of dataset
         output_filepath (Path): Path to the destiny dcm file
         breast_bbox (tuple): Bbox of the breast region in the original image
-        k (int, optional): bbox extra border. Defaults to  px
+        k (int, optional): bbox extra border. Defaults to 0 px
     """
     assert original_dcm_filepath.exists(), \
         f'Dcm image missing check the path {original_dcm_filepath}'
-    if isinstance(breast_bbox, str):
-        breast_bbox = load_coords(breast_bbox)
-    assert not isinstance(breast_bbox, (str, list, np.ndarray)), 'Breast bbox wrong, fix it'
+    # if isinstance(breast_bbox, str):
+    #     breast_bbox = load_coords(breast_bbox)
+    # read the original dicom to get the positional metadata and the side of the breast
+    ref_itkimage = sitk.ReadImage(str(original_dcm_filepath))
+    ref_itkimage_array = sitk.GetArrayFromImage(ref_itkimage)
+    breast_bbox, breast_mask = get_breast_bbox(ref_itkimage_array[0, :, :])
+    side = 'R' if is_right(breast_mask) else 'L'
 
     # get the mask of detection bboxes
     detections_df[['x', 'y', 'radius']] = detections_df[['x', 'y', 'radius']].astype('int')
-    mask = detections_mask(image, detections_df, conf_thr=0.28785, k=15)
-
-    # turn back the image to the right side if necessary
-    dcm_img_name = original_dcm_filepath.name
-    if dcm_img_name.split('_')[3] == 'R':
-        mask = np.fliplr(mask)
-
-    # read the original dicom to get the positional metadata
-    ref_itkimage = sitk.ReadImage(str(original_dcm_filepath))
-    ref_itkimage_array = sitk.GetArrayFromImage(ref_itkimage)
+    mask = detections_mask(image, detections_df, side=side, conf_thr=0.28785, k=k)
     complete_mask = np.zeros(ref_itkimage_array.shape, dtype='uint8')
 
     # replace the breast bbox region an empty image with the mask
@@ -525,3 +525,38 @@ def is_right(mask: np.ndarray):
         return True
     else:
         return False
+
+
+def get_breast_bbox(image: np.ndarray):
+    """
+    Makes a threshold of the image identifying the regions different from
+    the background (0). Takes the largest (area) region (the one corresponding
+    to the breast), defines the contour of this region and creates a roi
+    that fits it.
+
+    Args:
+        image (np.ndarray): Breast image to be croped.
+    Return:
+        breast_bbox (List[tuple]): Coordinates of the bounding box.
+            [(x, y), (x+w, y+h)] (topleft, rightbottom)
+        mask (np.ndarray): binary mask image of the breast.
+    """
+
+    # Threshold image with th=0 and get connected comp.
+    img = image.copy()
+    img[img != 0] = 255
+    img = img.astype('uint8')
+    nb_components, output, stats, _ = \
+        cv2.connectedComponentsWithStats(img, connectivity=4)
+
+    # Get the areas of each connected component
+    sizes = stats[:, -1]
+    # Keep the largest connected component excluding bkgd
+    max_label = np.argmax(sizes[1:]) + 1
+    x, y, w, h = stats[max_label, 0:4]
+    breast_bbox = [(x, y), (x+w, y+h)]
+
+    # Generate a binary mask for the breast
+    mask = np.zeros(img.shape)
+    mask[output == max_label] = 1
+    return breast_bbox, mask
