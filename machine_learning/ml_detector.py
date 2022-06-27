@@ -45,7 +45,7 @@ class DetectorML:
             data=cand_features, columns=self.feature_extractor.feature_names)
         
         prb, cand_mask = self.classifier.predict(cand_features, 'all_features', True)
-        cand_features = cand_features.loc[cand_mask,:].reset_index()
+        cand_features = cand_features.loc[cand_mask, :].reset_index()
         cand_features['confidence'] = prb
         
         # perform NMS over detected candidates
