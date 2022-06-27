@@ -12,7 +12,6 @@ from machine_learning.ml_detector import DetectorML
 from deep_learning.classification_models.models.class_based_detector import \
     ClassificationBasedDetector
 from deep_learning.detection_models.models.detect_based_detector import DetectionBasedDetector
-from database.parsing_metadata import get_breast_bbox
 import deep_learning.dl_utils as dl_utils
 import general_utils.utils as utils
 
@@ -96,12 +95,12 @@ def main():
     im_array = im_array[0, :, :]
 
     # crop the breast region and turn them to left ones
-    bbox_orig, breast_mask = get_breast_bbox(im_array.copy())
+    bbox_orig, breast_mask = utils.get_breast_bbox(im_array.copy())
     right = utils.is_right(breast_mask)
     bbox = bbox_orig
     if right:
         im_array = np.fliplr(im_array)
-        bbox, _ = get_breast_bbox(im_array.copy())
+        bbox, _ = utils.get_breast_bbox(im_array.copy())
     im_array = im_array[bbox[0][1]:bbox[1][1], bbox[0][0]:bbox[1][0]]
 
     # get the detections
