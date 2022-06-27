@@ -5,8 +5,8 @@
 ## MAIA Master 2020
 
 ---------------------------------------
-## Team Members
 
+## Team Members
 
 - ### Cortina Uribe Alejandro
 
@@ -14,6 +14,8 @@
 
 - ### Zalevskyi Vladyslav
 
+![alt text](header2.png)
+![alt text](header.png)
 
 ## Instructions
 
@@ -23,16 +25,16 @@ The main final results analysis notebooks are:
 
 - On **validaton set**:
   
-  - [Adavanced Image Analysis and Machine Learning](https://github.com/joaco18/calc-det/blob/dev/notebooks/detection_by_aia_plus_ml_analysis.ipynb)
+  - Adavanced Image Analysis and Machine Learning [[Github]](https://github.com/joaco18/calc-det/blob/dev/notebooks/detection_by_aia_plus_ml_analysis.ipynb) [[Local]](notebooks/detection_by_aia_plus_ml_analysis.ipynb) [[Colab]](https://drive.google.com/file/d/10OpnnU_tamRR67rVDut-LJk-t_XquSB-/view?usp=sharing)
   
-  - [Deep Learning - Detection by classification](https://github.com/joaco18/calc-det/blob/dev/notebooks/colab/detection_by_classification_analysis.ipynb)
+  - Deep Learning - Detection by classification [[Github]](https://github.com/joaco18/calc-det/blob/dev/notebooks/colab/detection_by_classification_analysis.ipynb) [[Local]](notebooks/colab/detection_by_classification_analysis.ipynb) [[Colab]](https://drive.google.com/file/d/1AWCJ6cJ4WUwjlqRBLi-nMO3oFgktHwLK/view?usp=sharing)
   
-  - [Deep Learning - Detection with FasterRCNN](https://github.com/joaco18/calc-det/blob/dev/notebooks/colab/detection_by_fasterrcnn_analysis.ipynb)
+  - Deep Learning - Detection with FasterRCNN [[Github]](https://github.com/joaco18/calc-det/blob/dev/notebooks/colab/detection_by_fasterrcnn_analysis.ipynb) [[Local]](notebooks/colab/detection_by_fasterrcnn_analysis.ipynb) [[Colab]](https://drive.google.com/file/d/1AVHFq1pSnsYScXIPzkyB10KvWjP8E8Iy/view?usp=sharing)
 
-  - [Three pipelines - best models ](https://github.com/joaco18/calc-det/blob/dev/notebooks/colab/final_comparison_between_all_methods_val_set.ipynb)
+  - Three pipelines - best models  [[Github]](https://github.com/joaco18/calc-det/blob/dev/notebooks/colab/final_comparison_between_all_methods_val_set.ipynb) [[Local]](notebooks/colab/final_comparison_between_all_methods_val_set.ipynb) [[Colab]](https://colab.research.google.com/drive/1gKJMPJONsoRQJGdc6NmHzN_lUVG4dHJY?usp=sharing)
 
 - On **test set**:
-  - [Three pipelines - best models](https://github.com/joaco18/calc-det/blob/dev/notebooks/colab/final_comparison_between_all_methods_test_set.ipynb)
+  - Three pipelines - best models [[Github]](https://github.com/joaco18/calc-det/blob/dev/notebooks/colab/final_comparison_between_all_methods_test_set.ipynb) [[Local]](notebooks/colab/final_comparison_between_all_methods_test_set.ipynb) [[Colab]](https://colab.research.google.com/drive/1x4du20GC-XZK_ujAJA1UyXyY3ZgGMcyV?usp=sharing)
 
 Even if the repository is self-contained and it be fully reproduced following the undegoing instructions, the reader might be interested first in checking and runing examples of the final pipelines we generated. To do so, you should do:
 
