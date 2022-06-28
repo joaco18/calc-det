@@ -31,10 +31,10 @@ The main final results analysis notebooks are:
   
   - Deep Learning - Detection with FasterRCNN [[Github]](https://github.com/joaco18/calc-det/blob/dev/notebooks/colab/detection_by_fasterrcnn_analysis.ipynb) [[Local]](notebooks/colab/detection_by_fasterrcnn_analysis.ipynb) [[Colab]](https://drive.google.com/file/d/1AVHFq1pSnsYScXIPzkyB10KvWjP8E8Iy/view?usp=sharing)
 
-  - Three pipelines - best models  [[Github]](https://github.com/joaco18/calc-det/blob/dev/notebooks/colab/final_comparison_between_all_methods_val_set.ipynb) [[Local]](notebooks/colab/final_comparison_between_all_methods_val_set.ipynb) [[Colab]](https://colab.research.google.com/drive/1gKJMPJONsoRQJGdc6NmHzN_lUVG4dHJY?usp=sharing)
+  - Three pipelines - best models  [[Github]](https://github.com/joaco18/calc-det/blob/dev/notebooks/colab/final_comparison_between_all_methods_val_set.ipynb) [[Local]](notebooks/colab/final_comparison_between_all_methods_val_set.ipynb) [[Colab]](https://drive.google.com/file/d/1A2pJF2j0E96u0dr2KYZRcozfLsVzNKal/view?usp=sharing)
 
 - On **test set**:
-  - Three pipelines - best models [[Github]](https://github.com/joaco18/calc-det/blob/dev/notebooks/colab/final_comparison_between_all_methods_test_set.ipynb) [[Local]](notebooks/colab/final_comparison_between_all_methods_test_set.ipynb) [[Colab]](https://colab.research.google.com/drive/1x4du20GC-XZK_ujAJA1UyXyY3ZgGMcyV?usp=sharing)
+  - Three pipelines - best models [[Github]](https://github.com/joaco18/calc-det/blob/dev/notebooks/colab/final_comparison_between_all_methods_test_set.ipynb) [[Local]](notebooks/colab/final_comparison_between_all_methods_test_set.ipynb) [[Colab]](https://drive.google.com/file/d/1A36xrh9LQbUWZqNoSbq5VlpBhIegwZ6u/view?usp=sharing)
 
 Even if the repository is self-contained and it be fully reproduced following the undegoing instructions, the reader might be interested first in checking and runing examples of the final pipelines we generated. To do so, you should do:
 
@@ -108,6 +108,8 @@ cd ../
 
 ## Runing a full case
 
+This terminal commands should be excecuted locally not in colab.
+
 ### AIA-ML
 
 ```bash
@@ -120,15 +122,11 @@ python mc_detector.py --dcm-filepath <ABOSULTE_PATH_TO_REPO>/example_img/2406573
 python mc_detector.py --dcm-filepath <ABOSULTE_PATH_TO_REPO>/example_img/24065734_5291e1aee2bbf5df_MG_L_CC_ANON.dcm --detector-type 'classification_dl' --ouput-path /<ABOSULTE_PATH_TO_REPO>/example_img/ --store-csv --v --batch-size 224
 ```
 
-in colab don't pass '--batch-size'
-
 ### Deep learning detection based detection
 
 ```bash
 python mc_detector.py --dcm-filepath <ABOSULTE_PATH_TO_REPO>/example_img/24065734_5291e1aee2bbf5df_MG_L_CC_ANON.dcm --detector-type 'detection_dl' --ouput-path /<ABOSULTE_PATH_TO_REPO>/example_img/ --store-csv --v --batch-size 1
 ```
-
-in colab don't pass '--batch-size'
 
 ## Further instructions
 
