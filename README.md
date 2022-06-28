@@ -108,6 +108,8 @@ cd ../
 
 ## Runing a full case
 
+This terminal commands should be excecuted locally not in colab.
+
 ### AIA-ML
 
 ```bash
@@ -120,15 +122,11 @@ python mc_detector.py --dcm-filepath <ABOSULTE_PATH_TO_REPO>/example_img/2406573
 python mc_detector.py --dcm-filepath <ABOSULTE_PATH_TO_REPO>/example_img/24065734_5291e1aee2bbf5df_MG_L_CC_ANON.dcm --detector-type 'classification_dl' --ouput-path /<ABOSULTE_PATH_TO_REPO>/example_img/ --store-csv --v --batch-size 224
 ```
 
-in colab don't pass '--batch-size'
-
 ### Deep learning detection based detection
 
 ```bash
 python mc_detector.py --dcm-filepath <ABOSULTE_PATH_TO_REPO>/example_img/24065734_5291e1aee2bbf5df_MG_L_CC_ANON.dcm --detector-type 'detection_dl' --ouput-path /<ABOSULTE_PATH_TO_REPO>/example_img/ --store-csv --v --batch-size 1
 ```
-
-in colab don't pass '--batch-size'
 
 ## Further instructions
 
