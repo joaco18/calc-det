@@ -19,7 +19,7 @@
 
 ## Instructions
 
-This repository contains all the code and analysis notebooks for our final project on microcalcifications (MC) detection on mammography images that we develpped for our AIA and ML-DL courses. The project included the develpment of three different pipelines for MC detection, one based on AIA+ML and two deep learning based. The full report can be checked [here](https://github.com/joaco18/calc-det/Calcification_detection_in_mammograms.pdf).
+This repository contains all the code and analysis notebooks for our final project on microcalcifications (MC) detection on mammography images that we develpped for our AIA and ML-DL courses. The project included the develpment of three different pipelines for MC detection, one based on AIA+ML and two deep learning based. The full report can be checked [here](Calcification_detection_in_mammograms.pdf).
 
 The main final results analysis notebooks are:
 
