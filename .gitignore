@@ -1,12 +1,36 @@
 # data
-data
-data/
-database/dataset.py
-database/masks.py
+cadavers/
+models/bria2014/feature_extraction_cv_adapt.py
+data/Bria/features
+data/train_img_filename.pkl
+data/INbreast Release 1.0
+data/hough_img
+data/hdog_images
+data/gsm_imgs
+data/recounstructed_by_dialation_img
+data/hough_gabor_features
 database/preparing_data.py
 database/Untitled.ipynb
-database/utils.py
-
+notebooks/debug_dataset.ipynb
+notebooks/try_dim_red_haar_selection.ipynb
+deep_learning/config.yml
+notebooks/develop_config.ipynb
+notebooks/dev_dcm_masks.ipynb
+notebooks/develop_cropping_strategy.ipynb
+notebooks/develop_our_resnets.ipynb
+deep_learning/detection_models/config.yml
+deep_learning/classification_models/checkpoints
+deep_learning/detection_models/checkpoints
+machine_learning/checkpoints
+notebooks/develop_complete_detector_dcm.ipynb
+notebooks/dev_dl_detector_metrics.ipynb
+example_img/24065734_5291e1aee2bbf5df_MG_L_CC_ANON.dcm
+example_img/24065734_5291e1aee2bbf5df_MG_L_CC_ANON_aia_ml_detections.dcm
+example_img/24065734_5291e1aee2bbf5df_MG_L_CC_ANON_aia_ml_detections.csv
+example_img/24065734_5291e1aee2bbf5df_MG_L_CC_ANON_classification_dl_detections.csv
+example_img/24065734_5291e1aee2bbf5df_MG_L_CC_ANON_classification_dl_detections.dcm
+example_img/24065734_5291e1aee2bbf5df_MG_L_CC_ANON_detection_dl_detections.csv
+example_img/24065734_5291e1aee2bbf5df_MG_L_CC_ANON_detection_dl_detections.dcm
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -139,3 +163,11 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# extrashit
+images/
+
+# bad result examples temp storage
+bad_results*/
+
+feature_sets/

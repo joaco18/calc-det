@@ -1,8 +1,19 @@
 pydicom == 2.2.2
 numpy
-opencv-python == 4.5.5.64
+opencv-contrib-python == 4.5.4.60
 pandas
 scikit-learn
 matplotlib
 SimpleITK == 2.1.1
-scikit-image
+scikit-image == 0.19.2
+h5py
+pyarrow
+pywavelets == 1.1.1
+seaborn
+tqdm
+xgboost
+transformers
+tensorboard
+pycocotools
+scikit-learn-intelex
+gdown
