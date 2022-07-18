@@ -12,8 +12,8 @@ pywavelets == 1.1.1
 seaborn
 tqdm
 xgboost
-transformers
-tensorboard
-pycocotools
-scikit-learn-intelex
-gdown
+# transformers
+# tensorboard
+# pycocotools
+# scikit-learn-intelex
+# gdown
